@@ -128,6 +128,36 @@ export function promptApiKey(
   });
 }
 
+export interface TextFieldPromptOptions {
+  readonly title: string;
+  readonly subtitleLines?: readonly string[];
+  readonly mask?: boolean;
+  readonly emptyHint?: string;
+}
+
+/** Generic single-field text prompt on the ApiKeyInputDialog chrome. */
+export function promptTextField(
+  host: SlashCommandHost,
+  options: TextFieldPromptOptions,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const dialog = new ApiKeyInputDialogComponent(
+      '',
+      options.subtitleLines ?? [],
+      (result: ApiKeyInputResult) => {
+        host.restoreEditor();
+        resolve(result.kind === 'ok' ? result.value : undefined);
+      },
+      {
+        title: options.title,
+        mask: options.mask ?? false,
+        ...(options.emptyHint !== undefined ? { emptyHint: options.emptyHint } : {}),
+      },
+    );
+    host.mountEditorReplacement(dialog);
+  });
+}
+
 /**
  * Asks for the provider endpoint the catalog did not declare (or declared
  * only as an env placeholder) — required for catalog imports whose protocol

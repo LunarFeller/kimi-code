@@ -88,6 +88,13 @@ export interface OpenAILegacyOptions {
    * whose default is to reason.
    */
   offEffort?: string | undefined;
+  /**
+   * The effort value sent for `withThinking('on')`. Boolean thinking models
+   * (no declared effort levels) otherwise send no field for 'on', which
+   * leaves reasoning off on endpoints whose server default is not to
+   * reason.
+   */
+  onEffort?: string | undefined;
   httpClient?: unknown;
   defaultHeaders?: Record<string, string>;
   toolMessageConversion?: ToolMessageConversion | undefined;
@@ -493,6 +500,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
   private _reasoningKeyDialect: ReasoningKeyDialect;
   private _thinkingEffort: ThinkingEffort | undefined;
   private _offEffort: string | undefined;
+  private _onEffort: string | undefined;
   private _generationKwargs: OpenAILegacyGenerationKwargs;
   private _toolMessageConversion: ToolMessageConversion;
   private _client: OpenAI | undefined;
@@ -518,6 +526,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     );
     this._thinkingEffort = undefined;
     this._offEffort = options.offEffort;
+    this._onEffort = options.onEffort;
     this._generationKwargs = {
       ...options.generationKwargs,
       ...(options.maxTokens !== undefined
@@ -575,7 +584,8 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     );
 
     // Determine reasoning_effort. 'on' has no wire encoding on
-    // chat-completions APIs, so it sends no reasoning_effort field; only a
+    // chat-completions APIs, so it sends the model's declared on value when
+    // one is configured, and no reasoning_effort field otherwise; only a
     // concrete effort (low/medium/high/...) is passed through verbatim.
     // 'off' sends the model's declared off value (e.g. 'none') when one is
     // configured — models that reason by default need the explicit value to
@@ -584,9 +594,11 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     let reasoningEffort: string | undefined =
       effort === 'off'
         ? this._offEffort
-        : effort === undefined || effort === 'on'
+        : effort === undefined
           ? undefined
-          : effort;
+          : effort === 'on'
+            ? this._onEffort
+            : effort;
 
     // Auto-enable reasoning_effort when the history contains ThinkPart but reasoning
     // was not explicitly configured. This prevents server validation errors from APIs

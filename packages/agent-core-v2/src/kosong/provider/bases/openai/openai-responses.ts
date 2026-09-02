@@ -360,6 +360,7 @@ export interface OpenAIResponsesOptions {
   model: string;
   maxOutputTokens?: number | undefined;
   offEffort?: string | undefined;
+  onEffort?: string | undefined;
   thinkingEffort?: ThinkingEffort | undefined;
   httpClient?: unknown;
   defaultHeaders?: Record<string, string>;
@@ -1020,6 +1021,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
   private readonly _defaultHeaders: Record<string, string> | undefined;
   private readonly _thinkingEffort: ThinkingEffort | undefined;
   private readonly _offEffort: string | undefined;
+  private readonly _onEffort: string | undefined;
   private readonly _generationKwargs: OpenAIResponsesGenerationKwargs;
   private readonly _toolMessageConversion: ToolMessageConversion;
   private readonly _client: OpenAI | undefined;
@@ -1036,6 +1038,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
     this._stream = true;
     this._thinkingEffort = options.thinkingEffort;
     this._offEffort = options.offEffort;
+    this._onEffort = options.onEffort;
     this._generationKwargs = {};
     this._toolMessageConversion = options.toolMessageConversion ?? null;
     this._httpClient = options.httpClient;
@@ -1097,7 +1100,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
         thinking.effort === 'off'
           ? this._offEffort
           : thinking.effort === 'on'
-            ? undefined
+            ? this._onEffort
             : thinking.effort;
       kwargs = { ...kwargs, reasoning_effort: effort };
     }

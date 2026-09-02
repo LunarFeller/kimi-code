@@ -52,6 +52,12 @@ export interface TabbedModelSelectorOptions {
   /** Forwarded to each inner selector; set to false to hide the Thinking
    * footer and disable ←/→ effort switching. */
   readonly thinkingControl?: boolean;
+  /** Forwarded to each inner selector; when true, committing boolean On opens
+   * a level picker that can persist on_effort, and the warning copy says so. */
+  readonly onEffortPrompt?: boolean;
+  /** Forwarded to each inner selector: provider-id → wire type, so the
+   * no-parameter warning can skip protocols that encode boolean On natively. */
+  readonly providerTypes?: Record<string, string | undefined>;
   readonly onSelect: (selection: ModelSelection) => void;
   /** Forwarded to each inner selector; when set, Alt+S applies the choice to
    * the current session only without persisting it as the default. */
@@ -190,6 +196,8 @@ function makeSelector(
     providerSwitchHint: true,
     warning: opts.warning,
     thinkingControl: opts.thinkingControl,
+    onEffortPrompt: opts.onEffortPrompt,
+    providerTypes: opts.providerTypes,
     onSelect: opts.onSelect,
     onSessionOnlySelect: opts.onSessionOnlySelect,
     onCancel: opts.onCancel,

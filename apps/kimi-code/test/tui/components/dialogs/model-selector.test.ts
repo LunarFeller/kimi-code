@@ -243,6 +243,68 @@ describe('ModelSelectorComponent', () => {
     expect(onSelect).toHaveBeenCalledWith({ alias: 'other', thinking: 'on' });
   });
 
+  it('warns that boolean On sends no reasoning parameter unless on_effort is configured', () => {
+    const bare = new ModelSelectorComponent({
+      models: { custom: model('Custom Model', ['thinking']) },
+      currentValue: 'custom',
+      currentThinkingEffort: 'on',
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    expect(text(bare)).toContain('on_effort');
+
+    // Off draft: the notice only applies to On.
+    const off = new ModelSelectorComponent({
+      models: { custom: model('Custom Model', ['thinking']) },
+      currentValue: 'custom',
+      currentThinkingEffort: 'off',
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    expect(text(off)).not.toContain('on_effort');
+
+    // Configured on_effort: the warning gives way to a muted note showing
+    // what On concretely sends.
+    const configured = new ModelSelectorComponent({
+      models: {
+        custom: {
+          ...model('Custom Model', ['thinking']),
+          onEffort: 'medium',
+        } as unknown as ModelAlias,
+      },
+      currentValue: 'custom',
+      currentThinkingEffort: 'on',
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    expect(text(configured)).not.toContain('On sends no reasoning parameter');
+    expect(text(configured)).toContain('reasoning_effort: "medium"');
+  });
+
+  it('suppresses the no-parameter warning on wires that encode boolean On natively', () => {
+    // Kimi protocol encodes boolean on as a thinking object — no warning.
+    const kimiWire = new ModelSelectorComponent({
+      models: { custom: model('Custom Model', ['thinking']) },
+      currentValue: 'custom',
+      currentThinkingEffort: 'on',
+      providerTypes: { 'managed:kimi-code': 'kimi' },
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    expect(text(kimiWire)).not.toContain('on_effort');
+
+    // OpenAI-compatible wire: the warning stays.
+    const openaiWire = new ModelSelectorComponent({
+      models: { custom: model('Custom Model', ['thinking']) },
+      currentValue: 'custom',
+      currentThinkingEffort: 'on',
+      providerTypes: { 'managed:kimi-code': 'openai' },
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+    expect(text(openaiWire)).toContain('on_effort');
+  });
+
   it('fuzzy-filters by typing and reports a match count', () => {
     const onCancel = vi.fn();
     const picker = new ModelSelectorComponent({

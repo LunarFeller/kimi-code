@@ -83,6 +83,14 @@ export interface ModelSelectorOptions {
   /** Set to false to hide the Thinking footer and disable ←/→ effort
    * switching — for pickers whose selection carries no thinking level. */
   readonly thinkingControl?: boolean;
+  /** When true, committing boolean On opens a level picker that can persist
+   * on_effort — the no-parameter warning then points at Enter instead of
+   * sending the user to config.toml directly. */
+  readonly onEffortPrompt?: boolean;
+  /** Provider-id → wire type. Used to suppress the no-parameter warning for
+   * protocols that encode boolean On natively (kimi, anthropic, …); models
+   * whose wire is unknown keep the warning. */
+  readonly providerTypes?: Record<string, string | undefined>;
   readonly onSelect: (selection: ModelSelection) => void;
   /** When provided, Alt+S invokes this instead of onSelect — used to apply the
    * choice to the current session only, without persisting it as the default. */
@@ -130,6 +138,16 @@ export function segmentsFor(model: ModelAlias): readonly string[] {
 export function effortLabel(effort: string): string {
   if (effort.length === 0) return effort;
   return effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+/**
+ * Whether the wire protocol encodes the boolean "thinking on" state natively
+ * (kimi / anthropic / google thinking objects). The OpenAI-compatible wires
+ * (openai, openai_responses) do not — without a declared effort, "on" sends no
+ * reasoning parameter at all. `undefined` (unknown wire) returns false.
+ */
+export function wireEncodesBooleanOn(wire: string | undefined): boolean {
+  return wire === 'kimi' || wire === 'anthropic' || wire === 'google-genai' || wire === 'vertexai';
 }
 
 /**
@@ -363,6 +381,34 @@ export class ModelSelectorComponent extends Container implements Focusable {
       const thinkingHeader = canSwitch ? ' Thinking  (←→ to switch)' : ' Thinking';
       lines.push(currentTheme.fg('textMuted', thinkingHeader));
       lines.push(this.renderThinkingControl(selected));
+      // Boolean On has no wire encoding on OpenAI-protocol endpoints: without
+      // an `on_effort` configured the request carries no reasoning parameter
+      // at all, so surface that instead of letting the switch read as broken.
+      // With an `on_effort` set, show what On concretely sends instead.
+      const wire =
+        this.opts.providerTypes?.[selected.model.provider] ?? selected.model.protocol;
+      const isBareBooleanOn =
+        this.effectiveEffort(selected) === 'on' &&
+        effortsOf(selected.model).length === 0 &&
+        thinkingAvailability(selected.model) === 'toggle' &&
+        !wireEncodesBooleanOn(wire);
+      if (isBareBooleanOn && selected.model.onEffort === undefined) {
+        const notice =
+          this.opts.onEffortPrompt === true
+            ? 'On sends no reasoning parameter to this endpoint. Press Enter to pick a level (saved as on_effort in config.toml), or keep the default.'
+            : 'On sends no reasoning parameter to this endpoint. Set on_effort (e.g. "medium") on the model in config.toml to choose a level.';
+        for (const line of wrapTextWithAnsi(notice, Math.max(1, width - 1))) {
+          lines.push(currentTheme.fg('warning', ` ${line}`));
+        }
+      } else if (isBareBooleanOn && selected.model.onEffort !== undefined) {
+        const note =
+          this.opts.onEffortPrompt === true
+            ? `On sends reasoning_effort: "${selected.model.onEffort}" (on_effort). Press Enter to change.`
+            : `On sends reasoning_effort: "${selected.model.onEffort}" (on_effort in config.toml).`;
+        for (const line of wrapTextWithAnsi(note, Math.max(1, width - 1))) {
+          lines.push(currentTheme.fg('textMuted', ` ${line}`));
+        }
+      }
       lines.push('');
     }
     lines.push(currentTheme.fg('primary', '─'.repeat(width)));

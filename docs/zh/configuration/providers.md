@@ -83,6 +83,8 @@ max_context_size = 200000
 
 第三方推理模型（DeepSeek、Qwen、One API 等）开箱即用：CLI 自动处理 `reasoning_content` 字段和 `reasoning_effort` 注入。如果你的网关用非标准字段名返回推理内容，在模型别名上设 `reasoning_key` 覆盖。
 
+对于手动配置、支持 Thinking 但没有声明 `support_efforts` 档位的模型，布尔 Thinking 的 `on` 状态不会发送任何 `reasoning_effort`——端点是否推理取决于其服务端默认值。在模型上设置 [`on_effort`](./config-files.md#models)（如 `on_effort = "medium"`）即可指定发送的档位；首次为这类模型打开 Thinking 时，`/model` 和 `/thinking` 选择器也会提示你选择档位。
+
 - 默认 `base_url`：`https://api.openai.com/v1`
 - 凭证键名：`OPENAI_API_KEY`、`OPENAI_BASE_URL`
 

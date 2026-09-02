@@ -9,13 +9,21 @@ import {
   type ThinkingEffort,
 } from '@moonshot-ai/kimi-code-sdk';
 
+import { ChoicePickerComponent, type ChoiceOption } from '../components/dialogs/choice-picker';
 import { EditorSelectorComponent } from '../components/dialogs/editor-selector';
 import { EffortSelectorComponent } from '../components/dialogs/effort-selector';
 import {
   ExperimentsSelectorComponent,
   type ExperimentalFeatureDraftChange,
 } from '../components/dialogs/experiments-selector';
-import { modelDisplayName, segmentsFor } from '../components/dialogs/model-selector';
+import {
+  effortsOf,
+  modelDisplayName,
+  segmentsFor,
+  thinkingAvailability,
+  wireEncodesBooleanOn,
+  type ModelSelection,
+} from '../components/dialogs/model-selector';
 import { TabbedModelSelectorComponent } from '../components/dialogs/tabbed-model-selector';
 import { PermissionSelectorComponent } from '../components/dialogs/permission-selector';
 import { SettingsSelectorComponent, type SettingsSelection } from '../components/dialogs/settings-selector';
@@ -29,6 +37,7 @@ import { formatErrorMessage } from '../utils/event-payload';
 import { PERMISSION_MODE_DISPLAY_NAMES } from '../utils/permission-mode';
 import { thinkingEffortToConfig } from '../utils/thinking-config';
 import { showUsage } from './info';
+import { promptTextField } from './prompts';
 import { setExperimentalFeatures } from './experimental-flags';
 import type { SlashCommandHost } from './dispatch';
 
@@ -327,6 +336,12 @@ export async function handleEffortCommand(host: SlashCommandHost, args: string):
       'warning',
     );
   }
+  if (bareBooleanOnNeedsEffort(host, model, arg)) {
+    host.showStatus(
+      'On sends no reasoning parameter to this endpoint — pick a level via /model (saved as on_effort), or set on_effort in config.toml.',
+      'warning',
+    );
+  }
   await performModelSwitch(host, alias, arg, true);
 }
 
@@ -344,8 +359,9 @@ function showEffortPicker(
       currentValue,
       warning: hasConversationHistory(host) ? EFFORT_SWITCH_CACHE_WARNING : undefined,
       onSelect: (effort) => {
-        host.restoreEditor();
-        void performModelSwitch(host, alias, effort, true);
+        maybePromptOnEffort(host, { [alias]: model }, { alias, thinking: effort }, () => {
+          void performModelSwitch(host, alias, effort, true);
+        });
       },
       onSessionOnlySelect: (effort) => {
         host.restoreEditor();
@@ -452,6 +468,214 @@ function pickerModelsForHost(host: SlashCommandHost): Record<string, ModelAlias>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Boolean-On effort prompt — an OpenAI-protocol endpoint without declared
+// support_efforts encodes nothing for the boolean "on" state, so committing On
+// first offers to save a level as the model's on_effort in config.toml.
+// ---------------------------------------------------------------------------
+
+/** Sentinel option value that opens a free-text level input instead. */
+const CUSTOM_ON_EFFORT_VALUE = '__custom__';
+
+const ON_EFFORT_CHOICES: readonly ChoiceOption[] = [
+  {
+    value: '',
+    label: 'Default (no parameter)',
+    description: 'Send no reasoning parameter; the endpoint decides whether to think.',
+  },
+  {
+    value: 'low',
+    label: 'Low',
+    description: 'Send reasoning_effort: "low", saved as on_effort in config.toml.',
+  },
+  {
+    value: 'medium',
+    label: 'Medium',
+    description: 'Send reasoning_effort: "medium", saved as on_effort in config.toml.',
+  },
+  {
+    value: 'high',
+    label: 'High',
+    description: 'Send reasoning_effort: "high", saved as on_effort in config.toml.',
+  },
+  {
+    value: 'max',
+    label: 'Max',
+    description: 'Send reasoning_effort: "max", saved as on_effort in config.toml.',
+  },
+  {
+    value: CUSTOM_ON_EFFORT_VALUE,
+    label: 'Custom…',
+    description: 'Type any level your endpoint accepts, saved as on_effort in config.toml.',
+  },
+];
+
+/** Provider-id → wire type map for the model pickers' boolean-On handling. */
+export function providerTypesForHost(host: SlashCommandHost): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(host.state.appState.availableProviders).map(([id, provider]) => [
+      id,
+      provider?.type,
+    ]),
+  );
+}
+
+/**
+ * True for a boolean thinking toggle (no declared efforts) on an
+ * OpenAI-compatible wire — the wire shape where "on" alone has no encoding.
+ * Protocols that encode boolean On natively (kimi, anthropic, …) never qualify.
+ */
+function isBooleanOnOpenAIWire(
+  host: SlashCommandHost,
+  model: ModelAlias,
+  effort: ThinkingEffort,
+): boolean {
+  if (effort !== 'on') return false;
+  const effective = effectiveModelForHost(host, model);
+  const wire = host.state.appState.availableProviders[effective.provider]?.type ?? effective.protocol;
+  return (
+    thinkingAvailability(effective) === 'toggle' &&
+    effortsOf(effective).length === 0 &&
+    wire !== undefined &&
+    !wireEncodesBooleanOn(wire)
+  );
+}
+
+/**
+ * True when committing boolean "on" for this model reaches the wire as no
+ * reasoning parameter at all — an OpenAI-wire boolean toggle with no
+ * on_effort configured. Used by the typed /thinking form for its warning.
+ */
+export function bareBooleanOnNeedsEffort(
+  host: SlashCommandHost,
+  model: ModelAlias,
+  effort: ThinkingEffort,
+): boolean {
+  return (
+    isBooleanOnOpenAIWire(host, model, effort) &&
+    effectiveModelForHost(host, model).onEffort === undefined
+  );
+}
+
+/**
+ * Intercepts a committed model selection that turns boolean thinking On for a
+ * model with no declared efforts on an OpenAI-compatible wire: such an On
+ * reaches the endpoint as no reasoning parameter at all unless the model
+ * carries an on_effort, so the user always confirms the level — preselected
+ * to the configured on_effort (or the parameterless default), re-choosing the
+ * current value is a no-op, and picking another level overwrites on_effort.
+ * Clearing back to the default is the one case the config patch merge cannot
+ * express (it never deletes keys), so that choice proceeds with a pointer to
+ * config.toml. Every other selection — off, a concrete effort, an always-on
+ * model, or a protocol that encodes boolean On natively — proceeds untouched.
+ * Owns the editor restore for both paths.
+ */
+export function maybePromptOnEffort(
+  host: SlashCommandHost,
+  models: Record<string, ModelAlias>,
+  selection: ModelSelection,
+  proceed: () => void,
+): void {
+  const model = models[selection.alias];
+  if (model === undefined || !isBooleanOnOpenAIWire(host, model, selection.thinking)) {
+    host.restoreEditor();
+    proceed();
+    return;
+  }
+  const effective = effectiveModelForHost(host, model);
+  const current = effective.onEffort ?? '';
+  host.mountEditorReplacement(
+    new ChoicePickerComponent({
+      title: `Thinking level for ${modelDisplayName(selection.alias, effective)}`,
+      notice:
+        current === ''
+          ? 'This endpoint declares no thinking levels, so On alone sends no reasoning parameter. ' +
+            'Pick a level to save as on_effort in config.toml, or keep the default.'
+          : `On currently sends reasoning_effort: "${current}" (on_effort in config.toml). ` +
+            'Pick another level to change it.',
+      noticeTone: 'warning',
+      options: ON_EFFORT_CHOICES,
+      currentValue: current,
+      onSelect: (value) => {
+        host.restoreEditor();
+        if (value === current) {
+          proceed();
+          return;
+        }
+        if (value === CUSTOM_ON_EFFORT_VALUE) {
+          void promptCustomOnEffort(host, selection.alias).then((custom) => {
+            // Cancelled mid-way: the whole selection is aborted, like Esc.
+            if (custom === undefined) return;
+            void persistModelOnEffort(host, selection.alias, custom).then(() => {
+              proceed();
+            });
+          });
+          return;
+        }
+        if (value === '') {
+          host.showStatus(
+            `on_effort = "${current}" stays in config.toml — remove that line to return to the default.`,
+            'warning',
+          );
+          proceed();
+          return;
+        }
+        void persistModelOnEffort(host, selection.alias, value).then(() => {
+          proceed();
+        });
+      },
+      onCancel: () => {
+        host.restoreEditor();
+        host.showStatus('Model unchanged — no thinking level chosen.');
+      },
+    }),
+  );
+}
+
+/**
+ * Free-text on_effort entry behind the picker's "Custom…" option — for
+ * endpoints whose level is outside the preset list (e.g. "xhigh").
+ */
+async function promptCustomOnEffort(
+  host: SlashCommandHost,
+  alias: string,
+): Promise<string | undefined> {
+  return promptTextField(host, {
+    title: 'Thinking level sent when On',
+    subtitleLines: [
+      'Sent verbatim as reasoning_effort and saved as on_effort in config.toml.',
+      `For ${modelDisplayName(alias, host.state.appState.availableModels[alias])}.`,
+    ],
+    emptyHint: 'Level cannot be empty.',
+  });
+}
+
+async function persistModelOnEffort(
+  host: SlashCommandHost,
+  alias: string,
+  effort: string,
+): Promise<void> {  try {
+    const config = await host.harness.getConfig({ reload: true });
+    const entry = config.models?.[alias];
+    if (entry === undefined) {
+      host.showStatus(
+        `Cannot save on_effort: ${alias} is not in config.toml. Set on_effort there manually.`,
+        'warning',
+      );
+      return;
+    }
+    await host.harness.setConfig({
+      models: { ...config.models, [alias]: { ...entry, onEffort: effort } },
+    });
+    await host.authFlow.refreshConfigAfterLogin();
+    host.showStatus(
+      `Saved on_effort = "${effort}" for ${modelDisplayName(alias, host.state.appState.availableModels[alias])}.`,
+    );
+  } catch (error) {
+    host.showError(`Failed to save on_effort: ${formatErrorMessage(error)}`);
+  }
+}
+
 export function showModelPicker(host: SlashCommandHost, selectedValue: string = host.state.appState.model): void {
   const models = pickerModelsForHost(host);
   const entries = Object.entries(models);
@@ -469,9 +693,12 @@ export function showModelPicker(host: SlashCommandHost, selectedValue: string = 
       selectedValue,
       currentThinkingEffort: host.state.appState.thinkingEffort,
       warning: hasConversationHistory(host) ? MODEL_SWITCH_CACHE_WARNING : undefined,
-      onSelect: ({ alias, thinking }) => {
-        host.restoreEditor();
-        void performModelSwitch(host, alias, thinking, true);
+      onEffortPrompt: true,
+      providerTypes: providerTypesForHost(host),
+      onSelect: (selection) => {
+        maybePromptOnEffort(host, models, selection, () => {
+          void performModelSwitch(host, selection.alias, selection.thinking, true);
+        });
       },
       onSessionOnlySelect: ({ alias, thinking }) => {
         host.restoreEditor();

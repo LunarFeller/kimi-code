@@ -97,6 +97,7 @@ export interface OpenAILegacyOptions {
   maxTokens?: number | undefined;
   reasoningKey?: string | undefined;
   offEffort?: string | undefined;
+  onEffort?: string | undefined;
   thinkingEffort?: ThinkingEffort | undefined;
   httpClient?: unknown;
   defaultHeaders?: Record<string, string>;
@@ -494,6 +495,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
   private readonly _defaultHeaders: Record<string, string> | undefined;
   private readonly _reasoningKeyDialect: ReasoningKeyDialect;
   private readonly _offEffort: string | undefined;
+  private readonly _onEffort: string | undefined;
   private readonly _thinkingEffort: ThinkingEffort | undefined;
   private readonly _generationKwargs: OpenAILegacyGenerationKwargs;
   private readonly _toolMessageConversion: ToolMessageConversion;
@@ -523,6 +525,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     );
     this._thinkingEffort = options.thinkingEffort;
     this._offEffort = options.offEffort;
+    this._onEffort = options.onEffort;
     this._generationKwargs = normalizeGenerationKwargs(
       this._model,
       options.maxTokens !== undefined ? completionTokenKwargs(this._model, options.maxTokens) : {},
@@ -677,9 +680,11 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     let reasoningEffort: string | undefined =
       explicitThinkingEffort === 'off'
         ? this._offEffort
-        : explicitThinkingEffort === undefined || explicitThinkingEffort === 'on'
+        : explicitThinkingEffort === undefined
           ? undefined
-          : explicitThinkingEffort;
+          : explicitThinkingEffort === 'on'
+            ? this._onEffort
+            : explicitThinkingEffort;
 
     if (
       reasoningEffort === undefined &&

@@ -24,6 +24,7 @@ registerProtocolBase({
         defaultHeaders: traitDefaultHeaders(traits),
         maxOutputTokens: config.providerOptions?.defaultMaxTokens,
         offEffort: config.providerOptions?.offEffort,
+        onEffort: config.providerOptions?.onEffort,
         convertError: traitConvertError(traits),
       }),
     });

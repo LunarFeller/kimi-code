@@ -21,6 +21,7 @@ export interface ProtocolProviderOptions {
   readonly defaultMaxTokens?: number;
   readonly supportEfforts?: readonly string[];
   readonly offEffort?: string;
+  readonly onEffort?: string;
   readonly adaptiveThinking?: boolean;
   readonly betaApi?: boolean;
   readonly metadata?: Readonly<Record<string, string>>;

@@ -1302,6 +1302,31 @@ describe('OpenAI reasoning_effort path (issue #1616)', () => {
     expect(body['reasoning']).toEqual({ effort: 'none', summary: 'auto' });
   });
 
+  it('encodes an explicit on as the configured onEffort for endpoints whose default is not to reason', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'sk-probe',
+      stream: false,
+      onEffort: 'medium',
+    });
+
+    const body = await captureOpenAIBody(provider, { thinking: { effort: 'on' } });
+
+    expect(body['reasoning_effort']).toBe('medium');
+  });
+
+  it('encodes an explicit on as the configured onEffort on the Responses wire', async () => {
+    const provider = new OpenAIResponsesChatProvider({
+      model: 'grok-4',
+      apiKey: 'sk-probe',
+      onEffort: 'medium',
+    });
+
+    const body = await captureResponsesBody(provider, { thinking: { effort: 'on' } });
+
+    expect(body['reasoning']).toEqual({ effort: 'medium', summary: 'auto' });
+  });
+
   it('disables the auto-enable entirely once a withThinking hook exists (load-bearing)', async () => {
     const provider = new OpenAILegacyChatProvider({
       model: 'gpt-4.1',

@@ -65,6 +65,11 @@ const ModelAliasBaseSchema = z.object({
   // turning thinking off sends this value instead of omitting the effort
   // field — required by models whose default is to reason.
   offEffort: z.string().optional(),
+  // The effort value sent when the user picks the boolean "thinking on"
+  // state (no `supportEfforts` declared, e.g. a hand-configured OpenAI
+  // endpoint). Without it, "on" sends no effort field and relies on the
+  // server default, which may not reason at all.
+  onEffort: z.string().optional(),
   // Route the Anthropic transport through the beta Messages API
   // (`POST /v1/messages?beta=true`) instead of the standard endpoint. Used by
   // managed Kimi Code models that declare `protocol: 'anthropic'`.

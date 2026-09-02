@@ -28,6 +28,7 @@ function createProvider(
     reasoningKey: string;
     model: string;
     offEffort: string;
+    onEffort: string;
   }>,
 ): OpenAILegacyChatProvider {
   return new OpenAILegacyChatProvider({
@@ -36,6 +37,7 @@ function createProvider(
     stream: options?.stream ?? false,
     reasoningKey: options?.reasoningKey,
     offEffort: options?.offEffort,
+    onEffort: options?.onEffort,
   });
 }
 
@@ -1276,6 +1278,17 @@ describe('OpenAILegacyChatProvider', () => {
       const body = await captureRequestBody(provider, '', [], history);
 
       expect(body['reasoning_effort']).toBeUndefined();
+      expect(provider.thinkingEffort).toBe('on');
+    });
+
+    it('.withThinking("on") sends the configured onEffort for endpoints whose default is not to reason', async () => {
+      const provider = createProvider({ onEffort: 'medium' }).withThinking('on');
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Think' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      expect(body['reasoning_effort']).toBe('medium');
       expect(provider.thinkingEffort).toBe('on');
     });
 

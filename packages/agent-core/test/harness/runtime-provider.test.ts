@@ -284,7 +284,7 @@ describe('resolveRuntimeProvider maxOutputSize forwarding', () => {
     });
   });
 
-  it('forwards alias.offEffort to the openai and openai_responses provider configs', () => {
+  it('forwards alias.offEffort and alias.onEffort to the openai and openai_responses provider configs', () => {
     const config = {
       ...BASE_CONFIG,
       providers: {
@@ -300,12 +300,14 @@ describe('resolveRuntimeProvider maxOutputSize forwarding', () => {
           maxContextSize: 256000,
           supportEfforts: ['low', 'medium', 'high'],
           offEffort: 'none',
+          onEffort: 'medium',
         },
         'responses/grok': {
           provider: 'responses',
           model: 'grok-4',
           maxContextSize: 256000,
           offEffort: 'none',
+          onEffort: 'medium',
         },
       },
     } as KimiConfig;
@@ -313,10 +315,12 @@ describe('resolveRuntimeProvider maxOutputSize forwarding', () => {
     expect(resolveRuntimeProvider({ config, model: 'gateway/grok' }).provider).toMatchObject({
       type: 'openai',
       offEffort: 'none',
+      onEffort: 'medium',
     });
     expect(resolveRuntimeProvider({ config, model: 'responses/grok' }).provider).toMatchObject({
       type: 'openai_responses',
       offEffort: 'none',
+      onEffort: 'medium',
     });
   });
 

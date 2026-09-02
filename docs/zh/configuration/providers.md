@@ -29,16 +29,17 @@ Kimi Code CLI 支持同时接入多家 LLM 平台——用 Kimi Code 托管服�
 - `d` 键删除当前供应商（有 `[y/N]` 确认）
 - 在 `[ Add New Platform ]` 行按 Enter 添加新供应商
 
-添加时有两条路径：
+添加时有三条路径：
 
 - **Known third-party provider**：从 [models.dev](https://models.dev/) 拉取模型目录，选供应商 → 输入 API 密钥 → 选默认模型。目录未声明协议类型的供应商（如 xai、openrouter 这类厂商专用 SDK）会按 OpenAI 兼容协议导入并显示 "guessed" 提示；目录没有可用端点时会先弹出 base URL 输入框；Amazon Bedrock / Cohere 等专有协议和无法识别的显式协议会被拒绝导入。已下线（deprecated）和 alpha 状态的模型不会出现在导入列表中。如果公共目录不可达，CLI 会回退到内置目录快照，离线或网络受限环境下也能完成导入
 - **Custom registry (api.json)**：粘贴自定义 registry 地址和 Bearer token，CLI 自动创建 `providers` / `models` 条目。后续启动时，同一个 registry 地址下的供应商会一起刷新，因此上游新增、删除供应商以及模型元数据变化都会同步。
+- **Manual (custom endpoint)**：用于目录和 registry 都没有的自部署或中转端点——逐步输入供应商名称、协议、base URL、API 密钥、模型 ID、上下文长度和 Thinking 支持，CLI 会写入与手工编辑 `config.toml` 完全相同的 `providers` / `models` 条目
 
 ::: warning
 通过 `/login` 登录的 Kimi Code OAuth 托管账号不会在 `/provider` 里显示，请用 `/login` 和 `/logout` 管理。
 :::
 
-非交互环境下也可以用 shell 命令完成同样操作：[`kimi provider`](../reference/kimi-command.md#kimi-provider)。
+目录导入和 registry 导入在非交互环境下也可以用 shell 命令完成：[`kimi provider`](../reference/kimi-command.md#kimi-provider)。手动添加端点的流程仅限 TUI。
 
 ## `kimi`
 

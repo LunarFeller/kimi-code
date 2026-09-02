@@ -62,6 +62,33 @@ export interface FeedbackPromptResult {
   readonly value: string;
 }
 
+/** Generic single-choice list prompt on the ChoicePicker chrome. */
+export function promptChoice(
+  host: SlashCommandHost,
+  title: string,
+  options: readonly ChoiceOption[],
+  currentValue?: string,
+  notice?: string,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const picker = new ChoicePickerComponent({
+      title,
+      options,
+      ...(currentValue !== undefined ? { currentValue } : {}),
+      ...(notice !== undefined ? { notice, noticeTone: 'warning' as const } : {}),
+      onSelect: (value) => {
+        host.restoreEditor();
+        resolve(value);
+      },
+      onCancel: () => {
+        host.restoreEditor();
+        resolve(undefined);
+      },
+    });
+    host.mountEditorReplacement(picker);
+  });
+}
+
 export function promptFeedbackInput(host: SlashCommandHost): Promise<FeedbackPromptResult | undefined> {
   return new Promise((resolve) => {
     const dialog = new FeedbackInputDialogComponent((result: FeedbackInputDialogResult) => {
@@ -133,6 +160,9 @@ export interface TextFieldPromptOptions {
   readonly subtitleLines?: readonly string[];
   readonly mask?: boolean;
   readonly emptyHint?: string;
+  /** Returns a validation error to display (submission blocked), or undefined
+   * when the value is acceptable. */
+  readonly validate?: (value: string) => string | undefined;
 }
 
 /** Generic single-field text prompt on the ApiKeyInputDialog chrome. */
@@ -152,6 +182,7 @@ export function promptTextField(
         title: options.title,
         mask: options.mask ?? false,
         ...(options.emptyHint !== undefined ? { emptyHint: options.emptyHint } : {}),
+        ...(options.validate !== undefined ? { validate: options.validate } : {}),
       },
     );
     host.mountEditorReplacement(dialog);

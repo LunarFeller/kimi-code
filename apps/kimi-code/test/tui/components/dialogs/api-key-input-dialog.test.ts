@@ -18,4 +18,31 @@ describe('ApiKeyInputDialogComponent', () => {
       }
     }
   });
+
+  it('blocks submission while validate reports an error, showing it as the hint', () => {
+    const results: string[] = [];
+    const dialog = new ApiKeyInputDialogComponent(
+      '',
+      [],
+      (result) => {
+        if (result.kind === 'ok') results.push(result.value);
+      },
+      {
+        title: 'Field',
+        mask: false,
+        validate: (value) => (value.startsWith('ok-') ? undefined : 'Must start with "ok-".'),
+      },
+    );
+    dialog.focused = true;
+
+    for (const ch of 'bad') dialog.handleInput(ch);
+    dialog.handleInput('\r');
+    expect(results).toEqual([]);
+    expect(dialog.render(80).join('\n')).toContain('Must start with "ok-".');
+
+    for (let i = 0; i < 3; i++) dialog.handleInput('\u007F');
+    for (const ch of 'ok-1') dialog.handleInput(ch);
+    dialog.handleInput('\r');
+    expect(results).toEqual(['ok-1']);
+  });
 });

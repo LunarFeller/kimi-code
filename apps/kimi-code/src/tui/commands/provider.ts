@@ -32,6 +32,7 @@ import { DEFAULT_OAUTH_PROVIDER_NAME } from '../constant/kimi-tui';
 import { formatErrorMessage } from '../utils/event-payload';
 import { thinkingEffortToConfig } from '../utils/thinking-config';
 import { effectiveModelForHost, maybePromptOnEffort, providerTypesForHost } from './config';
+import { handleManualProviderAdd } from './provider-manual';
 import {
   promptApiKey,
   promptBaseUrl,
@@ -121,6 +122,15 @@ async function handleProviderAdd(host: SlashCommandHost): Promise<void> {
     await handleCatalogProviderAdd(host);
     return;
   }
+  if (source === 'manual') {
+    const added = await handleManualProviderAdd(host, (alias, effort) =>
+      setDefaultModel(host, alias, effort),
+    );
+    if (!added) {
+      reopenProviderManager(host);
+    }
+    return;
+  }
   const handled = await handleCustomRegistryAddViaDialog(host);
   if (!handled) {
     reopenProviderManager(host);
@@ -176,17 +186,22 @@ function reopenProviderManager(host: SlashCommandHost): void {
 
 function promptProviderAddSource(
   host: SlashCommandHost,
-): Promise<'known' | 'custom' | undefined> {
+): Promise<'known' | 'custom' | 'manual' | undefined> {
   return new Promise((resolve) => {
     const picker = new ChoicePickerComponent({
       title: 'Add provider',
       options: [
         { value: 'known', label: 'Known third-party provider' },
         { value: 'custom', label: 'Custom registry (api.json)' },
+        {
+          value: 'manual',
+          label: 'Manual (custom endpoint)',
+          description: 'Self-hosted or relay endpoint: base URL, API key, and model entered by hand.',
+        },
       ],
       onSelect: (value) => {
         host.restoreEditor();
-        resolve(value === 'known' || value === 'custom' ? value : undefined);
+        resolve(value === 'known' || value === 'custom' || value === 'manual' ? value : undefined);
       },
       onCancel: () => {
         host.restoreEditor();

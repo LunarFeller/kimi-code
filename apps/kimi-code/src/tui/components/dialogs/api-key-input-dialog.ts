@@ -50,14 +50,22 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
   private readonly subtitleLines: readonly string[];
   private readonly mask: boolean;
   private readonly emptyHint: string;
+  private readonly validate: ((value: string) => string | undefined) | undefined;
   private done = false;
-  private emptyHinted = false;
+  private hintMessage: string | undefined;
 
   constructor(
     platformName: string,
     subtitleLines: readonly string[],
     onDone: (result: ApiKeyInputResult) => void,
-    options?: { title?: string; mask?: boolean; emptyHint?: string },
+    options?: {
+      title?: string;
+      mask?: boolean;
+      emptyHint?: string;
+      /** Returns a validation error to display (submission blocked), or
+       * undefined when the value is acceptable. */
+      validate?: (value: string) => string | undefined;
+    },
   ) {
     super();
     this.onDone = onDone;
@@ -65,6 +73,7 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
     this.subtitleLines = subtitleLines;
     this.mask = options?.mask ?? true;
     this.emptyHint = options?.emptyHint ?? 'API key cannot be empty.';
+    this.validate = options?.validate;
     this.input.onSubmit = (value) => {
       this.submit(value);
     };
@@ -80,8 +89,8 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
       this.cancel();
       return;
     }
-    if (this.emptyHinted) {
-      this.emptyHinted = false;
+    if (this.hintMessage !== undefined) {
+      this.hintMessage = undefined;
     }
     this.input.handleInput(data);
   }
@@ -101,7 +110,7 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
 
     const border = (s: string): string => currentTheme.fg('primary', s);
     const titleStyled = currentTheme.boldFg('textStrong', this.title);
-    const subtitleSource = this.emptyHinted ? [this.emptyHint] : this.subtitleLines;
+    const subtitleSource = this.hintMessage !== undefined ? [this.hintMessage] : this.subtitleLines;
     const subtitleLines = subtitleSource.map((line) =>
       truncateToWidth(currentTheme.fg('textDim', line), innerWidth, '…'),
     );
@@ -150,7 +159,12 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
     if (this.done) return;
     const trimmed = value.trim();
     if (trimmed.length === 0) {
-      this.emptyHinted = true;
+      this.hintMessage = this.emptyHint;
+      return;
+    }
+    const validationError = this.validate?.(trimmed);
+    if (validationError !== undefined) {
+      this.hintMessage = validationError;
       return;
     }
     this.done = true;

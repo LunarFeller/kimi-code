@@ -1145,5 +1145,36 @@ describe('AppendLogStore', () => {
       await record.flush();
       expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
     });
+
+    it('becomes sticky when a recovery attempt hits a non-retryable error', async () => {
+      const permanent = new StorageError(
+        StorageErrors.codes.STORAGE_PERMISSION_DENIED,
+        'storage append failed: permission denied',
+      );
+      const failure = diskFull();
+      let attempts = 0;
+      const originalAppend = storage.append.bind(storage);
+      storage.append = async (...args) => {
+        attempts++;
+        if (attempts === 1) throw failure;
+        if (attempts === 2) throw permanent;
+        return originalAppend(...args);
+      };
+      let reportFailure!: () => void;
+      const reportedFailure = new Promise<void>((resolve) => {
+        reportFailure = resolve;
+      });
+
+      record.append<Rec>(SCOPE, KEY, { n: 1 }, { onError: reportFailure });
+      await reportedFailure;
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await settle();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await settle();
+
+      expect(attempts).toBe(2);
+      await expect(record.flush()).rejects.toBe(permanent);
+    });
   });
 });

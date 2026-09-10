@@ -443,12 +443,12 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         wrote = true;
         if (wroteBox !== undefined) wroteBox.value = true;
       } catch (error) {
-        const failure = (state.storageFailure ??= { error });
+        state.storageFailure = { error };
         if (state.recovery === undefined && isRecoverableStorageError(error)) {
           state.recovery = { failedBatch: batch, attempts: 0, timer: undefined };
           this.scheduleRecovery(scope, key, state);
         }
-        throw failure.error;
+        throw error;
       }
       if (state.cutoverEpoch !== cutoverEpoch) return wrote;
       state.pending.splice(0, batch.length);

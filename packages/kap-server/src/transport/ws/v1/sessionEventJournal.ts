@@ -163,6 +163,7 @@ export class SessionEventJournal {
     this.flushPromise = this.flushOnce().finally(() => {
       this.flushPromise = undefined;
       if (this.pendingLines.length === 0) return;
+      if (this.closed) return;
       if (this.consecutiveFailures === 0) {
         this.scheduleFlush();
         return;

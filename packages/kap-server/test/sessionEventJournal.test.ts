@@ -186,4 +186,15 @@ describe('SessionEventJournal', () => {
     expect(reopened.seq).toBe(1);
     await reopened.close();
   });
+
+  it('does not write buffered lines after close', async () => {
+    const j = await SessionEventJournal.open(filePath);
+    fsMock.appendFailures = 100;
+    j.append(j.nextSeq(), envelope(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await j.close();
+    fsMock.appendFailures = 0;
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(await readFile(filePath, 'utf8').catch(() => '')).toBe('');
+  });
 });

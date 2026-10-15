@@ -103,6 +103,7 @@ timeout = 5
 | `extra_agent_dirs` | `array<string>` | — | 额外自定义 Agent 搜索目录，叠加到默认目录之上 |
 | `builtin_product_skills` | `boolean` | `true` | 是否向模型提供介绍 Kimi Code 自身的内置 Skills |
 | `telemetry` | `boolean` | `true` | 是否启用匿名遥测；显式设为 `false` 时关闭 |
+| `auto_session_title` | `boolean` | `true` | 是否允许客户端自动生成会话标题；显式设为 `false` 时关闭 |
 | [`providers`](#providers) | `table` | `{}` | API 供应商表 |
 | [`models`](#models) | `table` | — | 模型别名表 |
 | [`thinking`](#thinking) | `table` | — | Thinking 模式默认参数 |
@@ -117,12 +118,13 @@ timeout = 5
 
 ## `providers`
 
-`providers` 表的每一项定义一个 API 供应商，以唯一名称为 key。CLI 只从这里读取凭证，**不会**从 shell 环境变量自动取后备值。在终端里 `export KIMI_API_KEY` 不会让供应商自动获得密钥，必须显式写在配置文件里（详见[配置覆盖](./overrides.md#供应商凭证)）。
+`providers` 表的每一项定义一个 API 供应商，以唯一名称为 key。CLI 只从这里读取凭证，**不会**从 shell 环境变量自动取后备值。在终端里 `export KIMI_API_KEY` 不会让供应商自动获得密钥，必须显式写在配置文件里，或者用 `api_key_env` 指定一个变量名（详见[配置覆盖](./overrides.md#供应商凭证)）。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `type` | `string` | 是 | 供应商类型：`kimi`、`anthropic`、`openai`、`openai_responses`、`google-genai`、`vertexai` |
 | `api_key` | `string` | 否 | API 密钥，明文写在配置文件里 |
+| `api_key_env` | `string` | 否 | 指定一个 shell 环境变量名，从该变量读取 API 密钥，密钥不写入配置文件；每次请求时读取。与 `api_key`、`oauth` 互斥；变量未设置或为空时请求报错并指明变量名 |
 | `base_url` | `string` | 否 | API 基础 URL |
 | `oauth` | `table` | 否 | OAuth 凭据引用（`storage`、`key` 两个字段），由登录流程自动注入，通常无需手写 |
 | `env` | `table<string, string>` | 否 | 供应商凭证的备用来源，见 `env` 子表 |
@@ -136,7 +138,7 @@ KIMI_API_KEY = "sk-xxx"
 KIMI_BASE_URL = "https://api.moonshot.ai/v1"
 ```
 
-优先级：`api_key` 字段 > `env` 子表键 > 两者都缺时启动报错。
+优先级：`api_key` 或 `api_key_env`（互斥替代项，只能设置其中一个）> `env` 子表键（两者都不存在时才读）> 全部缺失时启动报错。刷新 `/models` 时，声明的变量未设置或为空的供应商会被记为失败，不影响其他供应商。
 
 ## `models`
 
@@ -153,6 +155,7 @@ KIMI_BASE_URL = "https://api.moonshot.ai/v1"
 | `support_efforts` | `array<string>` | 否 | 模型接受的 Thinking 档位；解析时配置值不受支持会回落到模型的 `default_effort` 并同步给 UI；选列表外的值会报错，managed 刷新会改写（固定请用 overrides） |
 | `default_effort` | `string` | 否 | 模型的默认 Thinking 档位；managed/open-platform 刷新可能改写，固定请用 [模型覆盖项](#模型覆盖项) |
 | `off_effort` | `string` | 否 | 关闭 Thinking 时在线上传输的 effort 编码（如 xai grok 的 `none`）；对默认就会推理的模型，这是真正关闭推理的唯一方式 |
+| `upgrade` | `object` | 否 | 自定义 registry 的模型升级声明（`model`、`migration_markdown` 和可选 `retirement_at`）；managed 刷新会改写 |
 | `base_url` | `string` | 否 | 模型级端点覆盖（catalog 导入网关模型时写入）；解析时优先于供应商的 `base_url`，仅与 `protocol` 配合时生效 |
 | `display_name` | `string` | 否 | UI 中显示的名称，未设时回退到 `model` |
 | `reasoning_key` | `string` | 否 | 仅 `openai` 供应商；网关用非标准字段名返回推理内容时才需要设置，默认自动识别 `reasoning_content` 等 |
@@ -182,7 +185,7 @@ max_context_size = 131072
 display_name = "Kimi for Coding (custom)"
 ```
 
-`[models."<alias>".overrides]` 接受普通模型字段，例如 `max_context_size`、`max_input_size`、`max_output_size`、`capabilities`、`display_name`、`reasoning_key`、`adaptive_thinking`、`support_efforts`、`default_effort` 和 `off_effort`。不接受身份 / 路由字段：`provider`、`model`、`protocol`、`beta_api` 和 `base_url`。
+`[models."<alias>".overrides]` 接受普通模型字段，例如 `max_context_size`、`max_input_size`、`max_output_size`、`capabilities`、`display_name`、`reasoning_key`、`adaptive_thinking`、`support_efforts`、`default_effort` 和 `off_effort`。不接受身份 / 路由字段（`provider`、`model`、`protocol`、`beta_api` 和 `base_url`），也不接受由 registry 管理的 `upgrade` 元数据。
 
 无需修改配置文件也可以临时切换模型：通过 `KIMI_MODEL_*` 环境变量在内存里合成一个临时供应商，详见[用环境变量定义模型](./env-vars.md#用环境变量定义模型kimi_model_)。
 
@@ -385,6 +388,7 @@ k3-max = "同一模型的 max Thinking 档位。适合最难的子任务。"
 | --- | --- | --- | --- |
 | `startup_timeout_ms` | `integer` | `30000`（30 秒） | 所有 MCP server 的全局默认连接（启动 + 工具发现）超时（毫秒）；`mcp.json` 的 `startupTimeoutMs` 优先于本节 |
 | `tool_timeout_ms` | `integer` | `60000`（60 秒） | 所有 MCP server 的全局默认单次工具调用超时（毫秒）；`mcp.json` 的 `toolTimeoutMs` 优先于本节 |
+| `default_deferred` | `boolean` | `false` | [按需加载工具](../customization/mcp.md#按需加载工具)的全局默认：设为 `true` 时所有 MCP server 的工具按需加载，除非 server 自行排除；`mcp.json` 中单个 server 的 `deferred` 字段优先于本节 |
 
 `startup_timeout_ms` 和 `tool_timeout_ms` 可分别被环境变量 `KIMI_MCP_STARTUP_TIMEOUT_MS` 和 `KIMI_MCP_TOOL_TIMEOUT_MS` 覆盖，优先级高于配置文件。MCP server 的完整配置方式见 [MCP](../customization/mcp.md)。
 
@@ -470,6 +474,16 @@ max_chars = 500000
 
 `base` 可被环境变量 `KIMI_CODE_PERSISTENCE_MINIDB_READMODEL` 覆盖，`search` 可被 `KIMI_CODE_SEARCH_WORKER` 覆盖，优先级均高于配置文件。
 
+## `watch`
+
+`watch` 控制 local.toml、AGENTS.md、skills、MCP 配置以及 `config.toml` 自身的文件系统热更新。默认开启。把 `enabled` 设为 `false` 后进程内不再挂任何 watcher；之后改文件要重启才会再读。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | 是否挂文件系统 watch；`false` 关闭进程内全部 `watch()` |
+
+`enabled` 可被环境变量 `KIMI_CODE_WATCH` 覆盖，优先级高于配置文件。
+
 <!--
 ## `experimental`
 
@@ -547,10 +561,12 @@ MCP server 的声明配置写在 `~/.kimi-code/mcp.json` 或项目内 `.kimi-cod
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `theme` | `string` | `auto` | 配色主题：`auto`、`dark`、`light` 或[自定义主题](../customization/themes.md)名 |
+| `tui_mode` | `string` | `regular` | 界面布局：`regular` 渲染进终端滚动缓冲区；`fullscreen`（实验性）部分组件支持鼠标交互，交互更顺手 |
 | `render_latex` | `boolean` | `true` | 将 Markdown 中的 LaTeX 公式渲染为 Unicode 文本；`false` 保留原始源码 |
 | `disable_paste_burst` | `boolean` | `false` | 禁用非 bracketed paste 的粘贴突发兜底；默认开启，避免快速多行粘贴被逐行提交 |
 | `cache_expiry_hint` | `boolean` | `true` | resume 或长时间空闲后发消息时，若上下文缓存可能过期则提醒，可先压缩或新建会话（仅 v2 引擎） |
 | `disable_feedback_survey` | `boolean` | `false` | 关闭输入框上方偶尔出现的会话评分提示 |
+| `auto_session_title` | `boolean` | `true` | 首个完成的轮次后由 TUI 自动生成会话标题；设为 `false` 只关闭 TUI 的触发，不影响 `config.toml` 中的全局 `auto_session_title` |
 | `[editor].command` | `string` | `""` | 编写长输入用的外部编辑器命令；留空则回退到 `$VISUAL` / `$EDITOR` |
 | `[notifications].enabled` | `boolean` | `true` | 是否发送桌面通知 |
 | `[notifications].notification_condition` | `string` | `unfocused` | 何时通知：`unfocused`（仅终端失去焦点时）或 `always`（总是） |
@@ -568,10 +584,12 @@ model、cwd、git 分支、permission 模式、plan 模式、上下文用量、s
 ```toml
 # ~/.kimi-code/tui.toml
 theme = "auto" # "auto" | "dark" | "light" | 自定义主题名
+tui_mode = "regular" # "regular" | "fullscreen"（"fullscreen" 为实验性）
 render_latex = true # false 表示消息中的 LaTeX 公式保留原始源码
 disable_paste_burst = false # true 表示禁用非 bracketed paste 的粘贴突发兜底
 cache_expiry_hint = true # false 表示关闭 resume / 空闲提交时的"缓存已过期"提醒弹窗
 disable_feedback_survey = false # true 表示关闭偶发的会话评分提示
+auto_session_title = true # false 表示 TUI 不在首个完成的轮次后自动生成会话标题
 
 [editor]
 command = "" # 留空则使用 $VISUAL / $EDITOR

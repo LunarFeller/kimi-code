@@ -80,8 +80,8 @@ class FakeMcpManager {
     return this.entries.get(name);
   }
 
-  configOf(name: string): McpServerConfig | undefined {
-    return this.configs.get(name);
+  deferredOf(name: string): boolean {
+    return this.configs.get(name)?.deferred === true;
   }
 
   resolved(name: string): ResolvedServer | undefined {
@@ -94,6 +94,10 @@ class FakeMcpManager {
   }
 
   reconnectHandler: (name: string) => Promise<void> = async () => {};
+
+  async markNeedsAuth(): Promise<boolean> {
+    return false;
+  }
 
   async reconnect(name: string): Promise<void> {
     await this.reconnectHandler(name);

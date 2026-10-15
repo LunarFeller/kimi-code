@@ -5,7 +5,7 @@ Kimi Code CLI 通过环境变量控制少数运行时行为：迁移数据目录
 ::: warning 重要：API 密钥不在这里配置
 `KIMI_API_KEY`、`ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 等密钥变量**不会**从 shell 环境变量自动读取。在终端里 `export KIMI_API_KEY=xxx` 不会让任何供应商获得密钥。密钥必须写在 `config.toml` 的 `[providers.<name>]` 段或 `[providers.<name>.env]` 子表里。
 
-唯一的例外是 `KIMI_MODEL_*` 系列，它是一个显式通道，*确实*会从 shell 读取凭证。详见[用环境变量定义模型](#用环境变量定义模型kimi_model_)。
+例外有两处：`KIMI_MODEL_*` 系列和供应商的 `api_key_env` 字段，这两个显式通道*确实*会从 shell 读取凭证。详见[用环境变量定义模型](#用环境变量定义模型kimi_model_)和[供应商凭证键](#供应商凭证键写在-configtoml-里)。
 
 背景说明见[配置覆盖：供应商凭证](./overrides.md#供应商凭证)。
 :::
@@ -55,6 +55,8 @@ export KIMI_CODE_CUSTOM_HEADERS=$'X-Gateway-Cluster: my-cluster\nX-Custom-Tag: d
 ## 供应商凭证键（写在 config.toml 里）
 
 下面这些键名不是直接从 shell 读取的。它们是写在 `config.toml` 的 `[providers.<name>.env]` 子表里、作为 `api_key` / `base_url` 备用来源的键名。CLI 只从配置文件读取，不从 `process.env` 读取。
+
+上面的惯用键名是按供应商类型固定的。如果更希望把密钥放在 shell 环境里并使用自定义变量名，可以在供应商上设置 [`api_key_env`](./config-files.md#providers)：CLI 会在每次请求时从该变量读取密钥。
 
 这样设计是为了让你保留熟悉的键名写法，同时把密钥放在配置文件里统一管理：
 
@@ -155,13 +157,16 @@ kimi
 | `KIMI_CODE_IDENTITY_NAME` | Agent 在系统提示词中的自称，优先级高于 `config.toml` 的 `[identity] name`，不写回配置文件 | 任意非空字符串；空值视为未设置 |
 | `KIMI_CODE_IDENTITY_SLUG` | 协议标识（`User-Agent` 产品名、MCP 客户端名），优先级高于 `[identity] slug`；未设置时由名称派生 | 任意非空字符串；会转小写并将连续非字母数字字符折叠为 `-` |
 | `KIMI_CODE_BUILTIN_PRODUCT_SKILLS` | 是否向模型提供介绍 Kimi Code 自身的内置 Skills，优先级高于 `config.toml` 的 `builtin_product_skills` | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
-| `KIMI_CODE_TUI_FULL_SCREEN` | 启用实验性的 fullscreen 界面：可滚动 transcript、鼠标选择、可点击链接、Ctrl-Shift-F 搜索 | `1` 开启；其他值保持常规内联界面 |
+| `KIMI_CODE_REPEAT_BREAKER` | 同一工具调用连续重复多次时，是否注入提醒并最终强制停止该轮。未设置时保持开启 | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off`；其他值忽略 |
 | `KIMI_CODE_EXPERIMENTAL_SUBAGENT_FORK` | 在 `Agent`/`AgentSwarm` 上启用实验性 `fork` 参数：以调用方对话历史快照而非空上下文启动 subagent | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
 | `KIMI_CODE_EXPERIMENTAL_TOOL_SELECT` | 启用实验性按需加载工具：标记 `deferred: true` 的 MCP server 工具不进入顶层工具列表，由模型经 `select_tools` 按需加载；还需模型声明 `dynamically_loaded_tools` 能力，详见 [MCP](../customization/mcp.md#按需加载工具) | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
+| `KIMI_CODE_EXPERIMENTAL_TOWER` | 启用实验性 [Tower 多 Agent 协作](../guides/tower.md) 和 `/tower` 命令，需在启动前设置。持久配置等价于在 `config.toml` 中设置 `[experimental] tower = true`；在运行中的 CLI 里修改该配置后，需要重启 Kimi Code。`KIMI_CODE_EXPERIMENTAL_FLAG=1` 仅在未显式配置 `[experimental] tower` 时启用 Tower；`tower = false` 会优先于总开关，而本变量可覆盖该配置 | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
+| `KIMI_CODE_WATCH` | 是否挂文件系统 watch 以热更新配置和工作区文件，优先级高于 `[watch] enabled`（默认 `true`） | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
 | `KIMI_CODE_SEARCH_WORKER` | 在独立 worker 线程中运行全局搜索索引，优先级高于 `[database] search`（默认 `true`） | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
 | `KIMI_CODE_PERSISTENCE_MINIDB_READMODEL` | 会话索引使用基于 minidb 的读模型，优先级高于 `[database] base`（默认 `true`） | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
 | `KIMI_MCP_STARTUP_TIMEOUT_MS` | MCP server 全局默认连接超时（毫秒）；优先级高于配置文件，低于 `mcp.json` 的 `startupTimeoutMs` | `1` 到 `2147483647` 的整数；非法值被忽略 |
 | `KIMI_MCP_TOOL_TIMEOUT_MS` | MCP server 全局默认单次工具调用超时（毫秒）；优先级高于配置文件，低于 `mcp.json` 的 `toolTimeoutMs` | `1` 到 `2147483647` 的整数；非法值被忽略 |
+| `KIMI_CODE_TRUST_WORKSPACE` | 将当前工作区标记为受信任，等效于在交互式信任提示中选择 "Trust this folder"；按进程生效，不写入持久化的信任记录 | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
 | `KIMI_LOOP_MAX_STEPS_PER_TURN` | Agent 单轮最大步数，优先级高于 `config.toml` 的 `[loop_control] max_steps_per_turn`；`0` 表示无上限 | 非负整数；非法值被忽略 |
 | `KIMI_LOOP_MAX_ATTEMPTS_PER_STEP` | 单步失败后的最大总尝试次数（含首次尝试），优先级高于 `config.toml` 的 `[loop_control] max_attempts_per_step` | 非负整数；非法值被忽略 |
 | `KIMI_CODE_INFINITE_RETRY` | 让所有失败的 LLM 请求无限重试而不是终止任务；指数退避（32 秒封顶）并尊重 `Retry-After`，等待期间中断仍生效 | 真值：`1`/`true`/`yes`/`on`；假值：`0`/`false`/`no`/`off` |
@@ -177,6 +182,7 @@ kimi
 | `KIMI_MODEL_TOP_P` | 每次请求的核采样 `top_p`，仅对 `kimi` 供应商生效（全局生效） | 数字，如 `0.95` |
 | `KIMI_MODEL_THINKING_EFFORT` | 在线上强制使用指定的思考强度，绕过模型声明的 `support_efforts`；仅 `kimi` 供应商生效 | 思考强度值，如 `max` |
 | `KIMI_MODEL_THINKING_KEEP` | 保留思考透传；`kimi` 以 `thinking.keep` 发送，`anthropic` 以 `clear_thinking_20251015` 编辑发送；覆盖 `[thinking] keep` | API 接受的值，如 `all`；传入关值（`false`/`0`/`no`/`off`/`none`/`null`）可禁用 |
+| `KIMI_CODE_LLM_HEADERS_TIMEOUT_MS` | `openai` / `openai-responses` / `anthropic` 协议的 LLM 请求等待响应头（首字节）的最长时间（毫秒），替代 HTTP 客户端默认的 300 秒响应头超时——长时间非流式 thinking 可调大；未设置保持默认；SDK 自身的总请求超时（默认 10 分钟）仍对单次尝试生效；`google-genai` 不支持（其 SDK 没有 dispatcher 配置项）；SOCKS 代理下不生效（请求仍走代理） | 正整数，不超过 2147483647；非法值会使请求失败 |
 | `KIMI_CODE_NO_AUTO_UPDATE` | 完全禁用更新预检：不检查、不后台安装、不提示。同时兼容旧名 `KIMI_CLI_NO_AUTO_UPDATE` | 真值：`1`/`true`/`yes`/`on` |
 | `KIMI_DISABLE_CRON` | 禁用定时任务工具（`CronCreate` 拒绝新计划，已有任务不触发） | `1` 表示禁用 |
 

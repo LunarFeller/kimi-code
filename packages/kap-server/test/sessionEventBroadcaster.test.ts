@@ -14,6 +14,7 @@ import {
   INTERACTION_TAG_SESSION_ID,
   LifecycleScope,
   IAgentLifecycleService,
+  IAgentConversationUndoParticipantRegistry,
   IAgentLoopService,
   IAgentProfileService,
   IAgentScopeContext,
@@ -121,6 +122,9 @@ class FakeAgentHandle {
     this.context = scope.agentContext;
     this.services.set(IAgentScopeContext, scope);
     this.services.set(IEventBus, this.bus);
+    this.services.set(IAgentConversationUndoParticipantRegistry, {
+      register: () => ({ dispose: () => {} }),
+    });
     this.services.set(IAgentLoopService, {
       snapshot: () => ({
         state: this.activity.turn === undefined ? 'idle' : 'running',
@@ -1651,6 +1655,30 @@ describe('SessionEventBroadcaster', () => {
       expect(globalView.deliveries).toEqual(['immediate']);
     });
 
+    it('forwards retired_default on event.model_catalog.changed', async () => {
+      const globalView = collectingTarget();
+      bc.addGlobalTarget(globalView.target);
+
+      const changed = [{ provider_id: 'acme', provider_name: 'Acme', added: 0, removed: 1 }];
+      const retiredDefault = {
+        from: 'acme/current',
+        to: 'acme/next',
+        from_display_name: 'Current',
+      };
+      eventBus.emit({
+        type: 'event.model_catalog.changed',
+        payload: { changed, unchanged: [], failed: [], retired_default: retiredDefault },
+      });
+
+      await vi.waitFor(() => expect(globalView.envelopes).toHaveLength(1));
+      expect(globalView.envelopes[0]).toMatchObject({
+        type: 'event.model_catalog.changed',
+        session_id: '__global__',
+        payload: { changed, unchanged: [], failed: [], retired_default: retiredDefault },
+      });
+      expect(globalView.deliveries).toEqual(['immediate']);
+    });
+
     it('drops malformed event.model_catalog.changed payloads', async () => {
       const globalView = collectingTarget();
       bc.addGlobalTarget(globalView.target);
@@ -2106,6 +2134,78 @@ describe('SessionEventBroadcaster', () => {
       seq: 4,
       payload: { pending_interaction: 'none' },
     });
+  });
+
+  it('delivers sub-agent approval events past the agent filter on live fan-out and replay', async () => {
+    const lc = new FakeLifecycle();
+    lc.addAgent('main');
+    lc.addAgent('agent-0');
+    sessions.set('s1', lc);
+    const { target, envelopes } = collectingTarget();
+    await bc.subscribe('s1', target, new Set(['main']));
+
+    interactions.enqueue({
+      id: 'a-sub',
+      kind: 'approval',
+      payload: {
+        toolCallId: 'call_sub',
+        toolName: 'Bash',
+        action: 'run',
+        display: { kind: 'command', command: 'ls' },
+      },
+      tags: { agentId: 'agent-0', sessionId: 's1' },
+    });
+    await bc.getCursor('s1');
+
+    expect(
+      envelopes.find((e) => e.type === 'event.approval.requested')?.payload,
+    ).toMatchObject({ agentId: 'agent-0', agent_id: 'agent-0', approval_id: 'a-sub' });
+
+    interactions.respond('a-sub', { decision: 'approved' });
+    await bc.getCursor('s1');
+
+    expect(
+      envelopes.find((e) => e.type === 'event.approval.resolved')?.payload,
+    ).toMatchObject({ agentId: 'agent-0', approval_id: 'a-sub' });
+
+    const replay = await bc.getBufferedSince('s1', { seq: 1 }, new Set(['main']));
+    expect(replay.resyncRequired).toBe(false);
+    expect(replay.events.map((e) => e.envelope.type)).toEqual([
+      'event.approval.requested',
+      'event.approval.resolved',
+      'event.session.work_changed',
+    ]);
+  });
+
+  it('delivers sub-agent question events past the agent filter on live fan-out', async () => {
+    const lc = new FakeLifecycle();
+    lc.addAgent('main');
+    lc.addAgent('agent-0');
+    sessions.set('s1', lc);
+    const { target, envelopes } = collectingTarget();
+    await bc.subscribe('s1', target, new Set(['main']));
+
+    interactions.enqueue({
+      id: 'q-sub',
+      kind: 'question',
+      payload: {
+        toolCallId: 'call_q',
+        questions: [{ question: 'Pick', options: [{ label: 'A' }] }],
+      },
+      tags: { agentId: 'agent-0', sessionId: 's1' },
+    });
+    await bc.getCursor('s1');
+
+    expect(
+      envelopes.find((e) => e.type === 'event.question.requested')?.payload,
+    ).toMatchObject({ agentId: 'agent-0', agent_id: 'agent-0', question_id: 'q-sub' });
+
+    interactions.respond('q-sub', { answers: { q_0: 'opt_0_0' } });
+    await bc.getCursor('s1');
+
+    expect(
+      envelopes.find((e) => e.type === 'event.question.answered')?.payload,
+    ).toMatchObject({ agentId: 'agent-0', question_id: 'q-sub' });
   });
 
   it('fans event.session.work_changed out to every connection, bypassing agent filters', async () => {

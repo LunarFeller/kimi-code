@@ -5,7 +5,7 @@ Kimi Code CLI uses environment variables to control a small number of runtime be
 ::: warning Important: API keys are not configured here
 Credential variables such as `KIMI_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENAI_API_KEY` are **not** read automatically from shell environment variables. Running `export KIMI_API_KEY=xxx` in the terminal does not give any provider its key. They must be written in `config.toml` under `[providers.<name>]` or the `[providers.<name>.env]` sub-table.
 
-The only exception is the `KIMI_MODEL_*` family, an explicit channel that *does* read credentials from the shell. See [Define a model from environment variables](#define-a-model-from-environment-variables-kimi_model_).
+The only exceptions are the `KIMI_MODEL_*` family and a provider's `api_key_env` field, two explicit channels that *do* read credentials from the shell. See [Define a model from environment variables](#define-a-model-from-environment-variables-kimi_model_) and [Provider credential key names](#provider-credential-key-names-written-in-configtoml).
 
 For background, see [Config overrides: provider credentials](./overrides.md#provider-credentials).
 :::
@@ -55,6 +55,8 @@ The format mirrors `ANTHROPIC_CUSTOM_HEADERS`: newline-separated `Name: Value` l
 ## Provider credential key names (written in config.toml)
 
 The key names below are not read directly from the shell. They are key names written inside the `[providers.<name>.env]` sub-table of `config.toml`, serving as fallback values for `api_key` / `base_url`. The CLI reads only from the config file, not from `process.env`.
+
+These conventional names are fixed per provider type. If you would rather keep the key in the shell environment under a name of your choosing, set [`api_key_env`](./config-files.md#providers) on the provider instead: the CLI then reads the key from that variable on every request.
 
 This design lets you keep familiar key name conventions while centralizing secret management in the config file:
 
@@ -155,13 +157,16 @@ Switches that control the behavior of subsystems such as telemetry, background t
 | `KIMI_CODE_IDENTITY_NAME` | Name the agent calls itself in the system prompt; higher priority than `[identity] name`, never written back | Any non-empty string; blank values read as unset |
 | `KIMI_CODE_IDENTITY_SLUG` | `User-Agent` product token and MCP client name; higher priority than `[identity] slug`; derived from the name when unset | Any non-empty string; normalized to lowercase with non-alphanumeric runs folded to `-` |
 | `KIMI_CODE_BUILTIN_PRODUCT_SKILLS` | Offer the built-in skills documenting Kimi Code itself to the model; higher priority than `builtin_product_skills` | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
-| `KIMI_CODE_TUI_FULL_SCREEN` | Experimental fullscreen UI: scrollable transcript, mouse selection, clickable links, Ctrl-Shift-F search | `1` enables it; anything else keeps the regular inline UI |
+| `KIMI_CODE_REPEAT_BREAKER` | Whether repeating the same tool call many times in a row injects reminders and eventually force-stops the turn. Unset keeps this on | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off`; any other value is ignored |
 | `KIMI_CODE_EXPERIMENTAL_SUBAGENT_FORK` | Experimental `fork` parameter on `Agent`/`AgentSwarm`: start the subagent from a snapshot of the caller's history instead of an empty context; `KIMI_CODE_EXPERIMENTAL_FLAG=1` also enables it | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
 | `KIMI_CODE_EXPERIMENTAL_TOOL_SELECT` | Experimental on-demand tool loading: tools of MCP servers marked `deferred: true` stay out of the top-level tool list and are loaded via `select_tools`; also requires the model to declare the `dynamically_loaded_tools` capability — see [MCP](../customization/mcp.md#loading-tools-on-demand) | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
+| `KIMI_CODE_EXPERIMENTAL_TOWER` | Enable experimental [Tower multi-agent coordination](../guides/tower.md) and the `/tower` command; set it before launch. The persistent equivalent is `[experimental] tower = true` in `config.toml`; changing that setting in a running CLI requires a restart. `KIMI_CODE_EXPERIMENTAL_FLAG=1` enables Tower only when `[experimental] tower` is not set in `config.toml`; an explicit `tower = false` takes precedence over the master flag, while this per-feature variable overrides the config | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
+| `KIMI_CODE_WATCH` | Attach filesystem watchers that reload config and workspace files; higher priority than `[watch] enabled` (default `true`) | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
 | `KIMI_CODE_SEARCH_WORKER` | Run the global search index in a dedicated worker thread; higher priority than `[database] search` (default `true`) | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
 | `KIMI_CODE_PERSISTENCE_MINIDB_READMODEL` | Use the minidb-backed read model for session indexing; higher priority than `[database] base` (default `true`) | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
 | `KIMI_MCP_STARTUP_TIMEOUT_MS` | Global default connection timeout (ms) for MCP servers; overrides the config file, but `mcp.json` `startupTimeoutMs` still wins | Integer from `1` to `2147483647`; invalid values are ignored |
 | `KIMI_MCP_TOOL_TIMEOUT_MS` | Global default single tool-call timeout (ms) for MCP servers; overrides the config file, but `mcp.json` `toolTimeoutMs` still wins | Integer from `1` to `2147483647`; invalid values are ignored |
+| `KIMI_CODE_TRUST_WORKSPACE` | Mark the current workspace as trusted, equivalent to choosing "Trust this folder" at the interactive trust prompt; takes effect per process and does not write a persistent trust record | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
 | `KIMI_LOOP_MAX_STEPS_PER_TURN` | Max Agent steps per turn; higher priority than `[loop_control] max_steps_per_turn` (`0` = unlimited) | Non-negative integer; invalid values are ignored |
 | `KIMI_LOOP_MAX_ATTEMPTS_PER_STEP` | Max total attempts for a failing step (including the first); higher priority than `[loop_control] max_attempts_per_step` | Non-negative integer; invalid values are ignored |
 | `KIMI_CODE_INFINITE_RETRY` | Retry failed LLM requests indefinitely; exponential backoff (32 s cap) honoring `Retry-After`; aborting still cancels immediately | Truthy: `1`/`true`/`yes`/`on`; falsy: `0`/`false`/`no`/`off` |
@@ -177,6 +182,7 @@ Switches that control the behavior of subsystems such as telemetry, background t
 | `KIMI_MODEL_TOP_P` | Nucleus-sampling `top_p` for every request; `kimi` provider only (global) | Number, e.g. `0.95` |
 | `KIMI_MODEL_THINKING_EFFORT` | Force a thinking effort (`thinking.effort`), bypassing the model's declared `support_efforts`; `kimi` provider only | An effort value, e.g. `max` |
 | `KIMI_MODEL_THINKING_KEEP` | Preserved-thinking passthrough: `thinking.keep` on `kimi`, a `clear_thinking_20251015` edit on `anthropic`; overrides `[thinking] keep` | A value the API accepts, e.g. `all`; an off-value (`false`/`0`/`no`/`off`/`none`/`null`) disables it |
+| `KIMI_CODE_LLM_HEADERS_TIMEOUT_MS` | Max time (ms) an LLM request on the `openai` / `openai-responses` / `anthropic` protocols may wait for the response headers (first byte), replacing the HTTP client's default 300 s headers timeout — raise it for long non-streaming thinking; unset keeps the default; the SDK's own total request timeout (default 10 minutes) still caps each attempt; not supported for `google-genai` (its SDK exposes no dispatcher option) or behind a SOCKS proxy (requests still go through the proxy) | Positive integer no greater than 2147483647; invalid values fail the request |
 | `KIMI_CODE_NO_AUTO_UPDATE` | Fully disable the update preflight: no check, background install, or prompt. Legacy alias `KIMI_CLI_NO_AUTO_UPDATE` also honored | Truthy: `1`/`true`/`yes`/`on` |
 | `KIMI_DISABLE_CRON` | Disable the scheduled-task tool (`CronCreate` rejects new schedules; existing tasks do not fire) | `1` to disable |
 

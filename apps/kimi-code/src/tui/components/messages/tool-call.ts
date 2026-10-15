@@ -5,8 +5,9 @@
 
 import { isAbsolute, relative, sep } from 'node:path';
 
-import { Container, Markdown, Spacer, Text, truncateToWidth, visibleWidth } from '@moonshot-ai/pi-tui';
+import { Container, Spacer, Text, truncateToWidth, visibleWidth } from '@moonshot-ai/pi-tui';
 import type { Component, TUI } from '@moonshot-ai/pi-tui';
+import { Markdown } from '#/tui/components/markdown/markdown';
 import { highlightLines, langFromPath } from '#/tui/components/media/code-highlight';
 import { renderDiffLinesClustered } from '#/tui/components/media/diff-preview';
 import {
@@ -43,7 +44,7 @@ import { buildGoalToolHeader, parseGoalToolOutput } from './tool-renderers/goal'
 import { searchNoticeOnly } from './tool-renderers/grep-output';
 import { parseReadMediaOutput } from './tool-renderers/media';
 import { computeWriteStats } from './tool-renderers/chip';
-import { nonEmptyLines, outcomeLine } from './tool-renderers/outcome';
+import { nonEmptyLines, outcomeLine, outcomeRows } from './tool-renderers/outcome';
 import { TruncatedOutputComponent } from './tool-renderers/truncated';
 import { isSpilledToolOutput } from './tool-renderers/types';
 import { isGenericToolResult, pickResultRenderer } from './tool-renderers/registry';
@@ -468,7 +469,7 @@ export function extractKeyArgumentDetail(
     // Prefer the short `description` so the header preview never spills a
     // multi-line `prompt` into the TUI chrome.
     Agent: ['description', 'prompt'],
-    NotifyUser: ['message'],
+    NotifyUser: ['title', 'message'],
   };
 
   // Glob: concatenate multiple args into a single summary so the header
@@ -760,6 +761,11 @@ export class ToolCallComponent extends Container {
           ((child instanceof TruncatedOutputComponent || child instanceof ShellExecutionComponent) &&
             child.wasTruncated()),
       );
+    } else if (
+      !this.truncatedAtLastRender &&
+      this.collapsedOutcomeClips(width)
+    ) {
+      this.truncatedAtLastRender = true;
     }
 
     if (allReused) {
@@ -803,6 +809,28 @@ export class ToolCallComponent extends Container {
   hasHiddenContent(): boolean {
     this.hiddenContent ??= this.computeHiddenContent();
     return this.hiddenContent || this.truncatedAtLastRender;
+  }
+
+  private collapsedOutcomeClips(width: number): boolean {
+    const result = this.result;
+    if (result === undefined || result.output.length === 0 || result.is_error === true) {
+      return false;
+    }
+    const name = this.toolCall.name;
+    if (name !== 'Bash' && !isGenericToolResult(name)) return false;
+    const leadsWithMetadata =
+      name === 'Bash' &&
+      (result.output.startsWith('task_id:') || isSpilledToolOutput(result.output));
+    const rows = outcomeRows(
+      result.output,
+      name === 'Bash' && !leadsWithMetadata ? 'last' : 'first',
+    );
+    for (const row of rows) {
+      if (!(row instanceof TruncatedHeaderLine)) continue;
+      row.render(width);
+      if (row.wasTruncated()) return true;
+    }
+    return false;
   }
 
   /** Whether the global ctrl+o toggle currently has this card expanded. */
@@ -1710,7 +1738,8 @@ export class ToolCallComponent extends Container {
     if (toolCall.name === 'NotifyUser' && isExperimentalFlagEnabled('notify_user')) {
       // The update itself lives in the panel above the input box; the card
       // is the durable trace in the transcript, so the header carries the
-      // first line and ctrl+o shows the whole message.
+      // title (or the message's first line for updates without one) and
+      // ctrl+o shows the whole message.
       if (isTruncated) {
         // max_tokens cut the arguments short: the call never ran and the
         // panel entry was dropped, so the card must not read as in flight.
@@ -2268,7 +2297,10 @@ export class ToolCallComponent extends Container {
       const message = str(this.toolCall.args['message']).trim();
       if (message.length === 0) return;
       this.addChild(
-        new Markdown(message, 2, 0, this.markdownTheme, undefined, createMarkdownOptions()),
+        new Markdown(message, 2, 0, this.markdownTheme, undefined, {
+          ...createMarkdownOptions(),
+          copySource: true,
+        }),
       );
       return;
     }

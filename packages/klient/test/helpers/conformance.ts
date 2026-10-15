@@ -14,6 +14,10 @@ import { join } from 'node:path';
 import { Service } from '@moonshot-ai/agent-core-v2/_base/di/service';
 import { CommandContribution } from '@moonshot-ai/agent-core-v2/agent/command/commandContribution';
 import { IFeatureManager } from '@moonshot-ai/agent-core-v2/app/feature/featureManager';
+import {
+  resetModelsDevUpstreamForTest,
+  setModelsDevUpstreamForTest,
+} from '@moonshot-ai/agent-core-v2/app/kosongConfig/modelsDevUpstream';
 
 import type { Klient } from '../../src/index.js';
 import type { TestEngine } from './engine.js';
@@ -159,6 +163,56 @@ export function defineKlientConformance(
       }
     });
 
+    it('promptWithSkills submits skills, args, and steerIfActive on every transport', async () => {
+      const workDir = await mkdtemp(join(tmpdir(), 'klient-conf-skill-submit-'));
+      try {
+        await mkdir(join(workDir, '.kimi-code', 'skills', 'conf-skill'), { recursive: true });
+        await writeFile(
+          join(workDir, '.kimi-code', 'skills', 'conf-skill', 'SKILL.md'),
+          '---\nname: conf-skill\ndescription: conformance fixture skill\n---\n\n# Conf body\n',
+        );
+        const created = await target.klient.global.sessions.create({ workDir });
+        try {
+          const agent = target.klient.session(created.id).agent('main');
+
+          await expect(
+            agent.promptWithSkills({
+              input: [{ type: 'text', text: 'Run the fixture skill.' }],
+              skills: [{ name: 'missing-skill' }],
+            }),
+          ).rejects.toThrow(/not found/i);
+
+          const launched = await agent.promptWithSkills({
+            input: [{ type: 'text', text: 'Run the fixture skill.' }],
+            skills: [{ name: 'conf-skill', args: 'src/app.ts' }],
+            steerIfActive: true,
+          });
+          expect(launched).toMatchObject({ turn_id: 0, state: 'running' });
+          expect(launched.prompt_id.length).toBeGreaterThan(0);
+          expect(launched.created_at.length).toBeGreaterThan(0);
+
+          const { history } = await agent.getContext();
+          const bundled = history.find(
+            (message) => message.role === 'user' && message.origin?.kind === 'user',
+          );
+          expect(bundled?.origin).toMatchObject({
+            kind: 'user',
+            skillActivations: [{ skillName: 'conf-skill', skillArgs: 'src/app.ts' }],
+          });
+          const texts = bundled?.content
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text);
+          expect(texts?.[0]).toContain('# Conf body');
+          expect(texts?.[0]).toContain('ARGUMENTS: src/app.ts');
+          expect(texts?.[1]).toBe('Run the fixture skill.');
+        } finally {
+          await target.klient.session(created.id).close();
+        }
+      } finally {
+        await rm(workDir, { recursive: true, force: true });
+      }
+    });
+
     it('providers.set/get/delete works and emits kosong.providers.changed', async () => {
       const events: Array<{
         added: readonly string[];
@@ -234,6 +288,54 @@ export function defineKlientConformance(
         await config.replaceSections({
           sections: { providers: beforeProviders.userValue, models: beforeModels.userValue },
         });
+      }
+    });
+
+    it('keeps a credential binding edited while the registry response is in flight', async () => {
+      const { config, kosong } = target.klient.global;
+      const domains = ['providers', 'models', 'defaultModel', 'defaultProvider', 'thinking'];
+      const before = Object.fromEntries(
+        await Promise.all(domains.map(async (domain) => [
+          domain, (await config.inspect(domain)).userValue,
+        ])),
+      );
+      const url = 'https://registry.example.test/api.json';
+      const source = { kind: 'apiJson', url, apiKey: '' };
+      const provider = { type: 'openai', baseUrl: 'https://owned.example.test/v1', source };
+      try {
+        await config.replaceSections({
+          sections: {
+            providers: { owned: { ...provider, apiKeyEnv: 'FIRST_EXAMPLE_KEY' } },
+            models: {},
+            defaultModel: undefined,
+            defaultProvider: undefined,
+            thinking: undefined,
+          },
+        });
+        setModelsDevUpstreamForTest({
+          fetchImpl: async () => {
+            await config.set({
+              domain: 'providers',
+              patch: { owned: { apiKeyEnv: 'SECOND_EXAMPLE_KEY' } },
+            });
+            return Response.json({
+              owned: {
+                id: 'owned',
+                name: 'Owned',
+                type: 'openai',
+                api: provider.baseUrl,
+                models: { m1: { id: 'm1' } },
+              },
+            });
+          },
+        });
+        await kosong.importCustomRegistry({ url, setDefaultWhenUnset: false });
+        await config.reload();
+        const providers = await config.inspect<Record<string, { apiKeyEnv?: string }>>('providers');
+        expect(providers.userValue?.['owned']?.apiKeyEnv).toBe('SECOND_EXAMPLE_KEY');
+      } finally {
+        resetModelsDevUpstreamForTest();
+        await config.replaceSections({ sections: before });
       }
     });
 

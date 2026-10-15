@@ -35,6 +35,8 @@ import {
   type ISessionScopeHandle,
   type Scope,
 } from '@moonshot-ai/agent-core-v2';
+import { annotateBundledSkillParts, isSkillActivationPart } from '@moonshot-ai/agent-core-v2/human/agent/origin';
+import { isUserPromptSubmitHookPart } from '@moonshot-ai/agent-core-v2/agent/contextMemory/hookParts';
 import { ErrorCode } from '../protocol/error-codes';
 import { projectPromptContentParts } from '../services/messages/messageProjection';
 import {
@@ -291,19 +293,21 @@ export function registerPromptsRoutes(app: PromptRouteHost, core: Scope): void {
           }
         }
         const parts = contentToCoreParts(resolvedContent);
+        const clientMetadata = req.body.metadata === undefined ? undefined : [structuredClone(req.body.metadata)];
         if (req.body.skills !== undefined) {
           if (req.body.agent_id !== undefined && req.body.agent_id !== MAIN_AGENT_ID) {
             await applyPromptMetadataUpdate({
               metadata: session.accessor.get(ISessionMetadata),
               eventService: core.accessor.get(IEventService),
               sessionId: session_id,
-            }, promptMetadataTextFromContentParts(parts));
+            }, promptMetadataTextFromContentParts(parts, clientMetadata));
           }
           const settlement = watchPromptSettlements(resolved.events);
           let result: PromptWithSkillsResult;
           try {
             result = await resolved.skill.promptWithSkills({
               input: parts,
+              clientMetadata,
               skills: req.body.skills,
               attachments: promptAttachments,
             });
@@ -321,6 +325,7 @@ export function registerPromptsRoutes(app: PromptRouteHost, core: Scope): void {
                 status: result.state,
                 content: projectPromptContentParts(parts),
                 created_at: result.created_at,
+                metadata: clientMetadata?.[0],
               },
               req.id,
             ),
@@ -331,13 +336,13 @@ export function registerPromptsRoutes(app: PromptRouteHost, core: Scope): void {
           metadata: session.accessor.get(ISessionMetadata),
           eventService: core.accessor.get(IEventService),
           sessionId: session_id,
-        }, promptMetadataTextFromContentParts(parts));
+        }, promptMetadataTextFromContentParts(parts, clientMetadata));
         const status = resolved.prompt.snapshot();
         const { id } = resolved.prompt.submit({
           message: { role: 'user', content: parts },
           meta: {
             promptId: reservation.id,
-            origin: { kind: 'user', attachments: promptAttachments } as PromptOrigin,
+            origin: { kind: 'user', attachments: promptAttachments, clientMetadata } as PromptOrigin,
             tracked: true,
           },
         });
@@ -497,14 +502,17 @@ export function projectPromptSnapshot(prompt: {
     ? 'running'
     : prompt.state === 'blocked' ? 'blocked' : 'queued';
   const origin = prompt.message.origin;
-  const bundled = origin?.kind === 'user' ? (origin.skillActivations?.length ?? 0) : 0;
-  const content = bundled === 0 ? prompt.message.content : prompt.message.content.slice(bundled);
+  const bundled = origin?.kind === 'user' ? (origin.skillActivations ?? []) : [];
+  const content = annotateBundledSkillParts(prompt.message.content, bundled).filter(
+    (part) => !isSkillActivationPart(part) && !isUserPromptSubmitHookPart(part),
+  );
   return {
     prompt_id: prompt.id,
     user_message_id: prompt.userMessageId,
     status,
     content: projectPromptContentParts(content),
     created_at: prompt.createdAt,
+    metadata: origin?.kind === 'user' || origin?.kind === 'skill_activation' ? origin.clientMetadata?.[0] : undefined,
   };
 }
 

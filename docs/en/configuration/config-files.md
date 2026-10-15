@@ -103,6 +103,7 @@ Fields in the config file fall into two categories: **top-level scalars** that d
 | `extra_agent_dirs` | `array<string>` | — | Extra custom agent search directories, layered on top of the default directories |
 | `builtin_product_skills` | `boolean` | `true` | Whether the built-in skills that document Kimi Code itself are offered to the model |
 | `telemetry` | `boolean` | `true` | Whether anonymous telemetry is enabled; disabled only when explicitly set to `false` |
+| `auto_session_title` | `boolean` | `true` | Whether clients may automatically generate session titles; disabled only when explicitly set to `false` |
 | [`providers`](#providers) | `table` | `{}` | API provider table |
 | [`models`](#models) | `table` | — | Model alias table |
 | [`thinking`](#thinking) | `table` | — | Default parameters for Thinking mode |
@@ -117,12 +118,13 @@ Fields in the config file fall into two categories: **top-level scalars** that d
 
 ## `providers`
 
-Each entry in the `providers` table defines an API provider, keyed by a unique name. The CLI reads credentials only from here. It does **not** fall back to shell environment variables automatically: running `export KIMI_API_KEY` in the terminal does not give any provider its key; you must write it explicitly in the config file (see [Config overrides](./overrides.md#provider-credentials)).
+Each entry in the `providers` table defines an API provider, keyed by a unique name. The CLI reads credentials only from here. It does **not** fall back to shell environment variables automatically: running `export KIMI_API_KEY` in the terminal does not give any provider its key; you must write it explicitly in the config file, or point `api_key_env` at a variable name yourself (see [Config overrides](./overrides.md#provider-credentials)).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `string` | Yes | Provider type: `kimi`, `anthropic`, `openai`, `openai_responses`, `google-genai`, `vertexai` |
 | `api_key` | `string` | No | API key, written in plain text in the config file |
+| `api_key_env` | `string` | No | Name of a shell environment variable to read the API key from instead of storing it in the config file; re-read on every request. Mutually exclusive with `api_key` and `oauth`; an unset or empty variable fails the request with an error naming the variable |
 | `base_url` | `string` | No | API base URL |
 | `oauth` | `table` | No | OAuth credential reference (`storage` and `key` fields); injected automatically by the login flow, so you normally never write this by hand |
 | `env` | `table<string, string>` | No | Fallback source for provider credentials; see the `env` sub-table |
@@ -136,7 +138,7 @@ KIMI_API_KEY = "sk-xxx"
 KIMI_BASE_URL = "https://api.moonshot.ai/v1"
 ```
 
-Priority: `api_key` field > `env` sub-table key > if both are absent, startup fails with an error.
+Priority: `api_key` or `api_key_env` (mutually exclusive alternatives — set exactly one) > `env` sub-table key (only when neither is present) > if all are absent, startup fails with an error. During a `/models` refresh, a provider whose declared variable is unset or empty is reported as failed without affecting other providers.
 
 ## `models`
 
@@ -153,6 +155,7 @@ Each entry in the `models` table defines a model alias (the name used in `defaul
 | `support_efforts` | `array<string>` | No | Thinking effort levels the model accepts; unsupported values fall back to `default_effort`, out-of-list values fail; managed refreshes may rewrite it (pin via overrides) |
 | `default_effort` | `string` | No | Default thinking effort for the model; managed and open-platform refreshes may rewrite it. Pin via [model overrides](#model-overrides) |
 | `off_effort` | `string` | No | Effort value sent on the wire to disable thinking (e.g. `none` for xai grok); the only way to actually stop reasoning on models that reason by default |
+| `upgrade` | `object` | No | Custom-registry upgrade declaration (`model`, `migration_markdown`, and optional `retirement_at`); managed refreshes rewrite it |
 | `base_url` | `string` | No | Per-model endpoint override (written by catalog imports); takes precedence over the provider's `base_url`, only effective together with `protocol` |
 | `display_name` | `string` | No | Name shown in the UI; falls back to `model` when unset |
 | `reasoning_key` | `string` | No | `openai` provider only; set when the gateway returns reasoning content under a non-standard field name (`reasoning_content` and friends are auto-detected) |
@@ -182,7 +185,7 @@ max_context_size = 131072
 display_name = "Kimi for Coding (custom)"
 ```
 
-`[models."<alias>".overrides]` accepts ordinary model fields such as `max_context_size`, `max_input_size`, `max_output_size`, `capabilities`, `display_name`, `reasoning_key`, `adaptive_thinking`, `support_efforts`, `default_effort`, and `off_effort`. It does not accept identity / routing fields: `provider`, `model`, `protocol`, `beta_api`, and `base_url`.
+`[models."<alias>".overrides]` accepts ordinary model fields such as `max_context_size`, `max_input_size`, `max_output_size`, `capabilities`, `display_name`, `reasoning_key`, `adaptive_thinking`, `support_efforts`, `default_effort`, and `off_effort`. It does not accept identity / routing fields (`provider`, `model`, `protocol`, `beta_api`, and `base_url`) or registry-managed `upgrade` metadata.
 
 You can also switch models temporarily without touching the config file: setting `KIMI_MODEL_*` environment variables synthesizes a temporary provider in memory that does not persist after restart. See [Define a model from environment variables](./env-vars.md#define-a-model-from-environment-variables-kimi_model_).
 
@@ -386,6 +389,7 @@ In print mode (`kimi -p "<prompt>"`), Kimi Code stays alive after the main agent
 | --- | --- | --- | --- |
 | `startup_timeout_ms` | `integer` | `30000` (30 seconds) | Global default connection (startup + tool discovery) timeout in milliseconds for all MCP servers; a per-server `startupTimeoutMs` in `mcp.json` wins |
 | `tool_timeout_ms` | `integer` | `60000` (60 seconds) | Global default single tool-call timeout in milliseconds for all MCP servers; a per-server `toolTimeoutMs` in `mcp.json` wins |
+| `default_deferred` | `boolean` | `false` | Global default for [loading tools on demand](../customization/mcp.md#loading-tools-on-demand): when `true`, every MCP server's tools load on demand unless the server opts out; a per-server `deferred` field in `mcp.json` wins |
 
 `startup_timeout_ms` and `tool_timeout_ms` can be overridden by the `KIMI_MCP_STARTUP_TIMEOUT_MS` and `KIMI_MCP_TOOL_TIMEOUT_MS` environment variables respectively, which take higher priority than `config.toml`. See [MCP](../customization/mcp.md) for the full MCP server configuration.
 
@@ -471,6 +475,16 @@ Both values must be positive integers. A call's `max_chars` overrides the defaul
 
 `base` can be overridden by the `KIMI_CODE_PERSISTENCE_MINIDB_READMODEL` environment variable and `search` by `KIMI_CODE_SEARCH_WORKER`; both take higher priority than `config.toml`.
 
+## `watch`
+
+`watch` controls filesystem watchers that reload local.toml, AGENTS.md, skills, MCP config, and `config.toml` itself. It defaults to on. Set `enabled` to `false` to start with no watchers; changing the file later will not be picked up until restart.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | Attach filesystem watchers; `false` disables every `watch()` for the process |
+
+`enabled` can be overridden by the `KIMI_CODE_WATCH` environment variable, which takes higher priority than `config.toml`.
+
 <!--
 ## `experimental`
 
@@ -548,10 +562,12 @@ Alongside `config.toml`, the CLI keeps terminal-UI and client preferences in a c
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `theme` | `string` | `auto` | Color theme: `auto`, `dark`, `light`, or the name of a [custom theme](../customization/themes.md) |
+| `tui_mode` | `string` | `regular` | UI layout: `regular` renders into the terminal scrollback; `fullscreen` (experimental) makes parts of the UI mouse-interactive for a smoother experience |
 | `render_latex` | `boolean` | `true` | Render LaTeX math expressions in Markdown messages as Unicode text; `false` keeps the raw source |
 | `disable_paste_burst` | `boolean` | `false` | Disable the non-bracketed paste-burst fallback that keeps rapid multi-line pastes from submitting line by line |
 | `cache_expiry_hint` | `boolean` | `true` | On resume or when submitting after a long idle stretch, warn that the context cache may have expired and offer to compact or start a new session (v2 engine only) |
 | `disable_feedback_survey` | `boolean` | `false` | Disable the occasional session rating prompt above the input box |
+| `auto_session_title` | `boolean` | `true` | Let the TUI automatically generate a session title after the first completed turn; `false` opts out the TUI only, without affecting the global `auto_session_title` gate in `config.toml` |
 | `[editor].command` | `string` | `""` | External editor command for composing long input; empty falls back to `$VISUAL` / `$EDITOR` |
 | `[notifications].enabled` | `boolean` | `true` | Whether desktop notifications are sent |
 | `[notifications].notification_condition` | `string` | `unfocused` | When to notify: `unfocused` (only when the terminal is not focused) or `always` |
@@ -569,10 +585,12 @@ Model, cwd, git branch, permission mode, plan mode, context usage, session id, v
 ```toml
 # ~/.kimi-code/tui.toml
 theme = "auto" # "auto" | "dark" | "light" | custom theme name
+tui_mode = "regular" # "regular" | "fullscreen" ("fullscreen" is experimental)
 render_latex = true # false keeps LaTeX math in messages as raw source
 disable_paste_burst = false # true disables non-bracketed paste-burst fallback
 cache_expiry_hint = true # false disables the "cache expired" dialog on resume / idle submit
 disable_feedback_survey = false # true hides the occasional session rating prompt
+auto_session_title = true # false stops the TUI from auto-generating a session title after the first turn
 
 [editor]
 command = "" # empty uses $VISUAL / $EDITOR

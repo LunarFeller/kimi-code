@@ -1,8 +1,9 @@
 import type { KimiConfig } from '@moonshot-ai/kimi-code-sdk';
 
 import { currentTheme, lightColors } from '#/tui/theme';
-import { loadTuiConfig, type TuiConfig } from '../config';
-import { setMarkdownRenderLatex } from '../utils/markdown-options';
+import { DEFAULT_MARKDOWN_CONFIG, loadTuiConfig, type TuiConfig } from '../config';
+import { TUI_MODE_RESTART_NOTICE } from '../constant/kimi-tui';
+import { setMarkdownMermaidMode, setMarkdownRenderLatex } from '../utils/markdown-options';
 import type { SlashCommandHost } from './dispatch';
 import { setExperimentalFeatures } from './experimental-flags';
 
@@ -60,6 +61,7 @@ export async function applyReloadedTuiConfig(
   // transcript components, which rebuild their Markdown children and copy the
   // options at construction — so the new value must be live by then.
   setMarkdownRenderLatex(config.renderLatex ?? true);
+  setMarkdownMermaidMode(config.markdown?.mermaid ?? DEFAULT_MARKDOWN_CONFIG.mermaid);
   const resolved = config.theme === 'auto'
     ? (currentTheme.palette === lightColors ? 'light' : 'dark')
     : undefined;
@@ -67,15 +69,21 @@ export async function applyReloadedTuiConfig(
   host.refreshTerminalThemeTracking();
   host.setAppState({
     editorCommand: config.editorCommand,
+    tuiMode: config.tuiMode,
     disablePasteBurst: config.disablePasteBurst,
     renderLatex: config.renderLatex,
     cacheExpiryHint: config.cacheExpiryHint,
     disableFeedbackSurvey: config.disableFeedbackSurvey,
+    autoSessionTitle: config.autoSessionTitle,
     notifications: config.notifications,
     upgrade: config.upgrade,
     statusLine: config.statusLine,
+    markdown: config.markdown,
   });
   host.state.editor.setDisablePasteBurst(config.disablePasteBurst);
+  if ((config.tuiMode ?? 'regular') !== host.state.ui.mode) {
+    host.showNotice(TUI_MODE_RESTART_NOTICE);
+  }
 }
 
 function applyRuntimeConfig(host: SlashCommandHost, config: KimiConfig): void {

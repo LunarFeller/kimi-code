@@ -1,11 +1,29 @@
 import chalk from 'chalk';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FooterComponent } from '#/tui/components/chrome/footer';
 import { setRainbowDance, type RainbowDanceController } from '#/tui/easter-eggs/dance';
 import { currentTheme, darkColors, lightColors } from '#/tui/theme';
 import type { ModelAlias } from '@moonshot-ai/kimi-code-sdk';
 import type { AppState } from '#/tui/types';
+
+const gitStatusMocks = vi.hoisted(() => ({
+  createGitStatusCache: vi.fn(),
+}));
+
+vi.mock('#/utils/git/git-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#/utils/git/git-status')>();
+  return { ...actual, createGitStatusCache: gitStatusMocks.createGitStatusCache };
+});
+
+beforeEach(() => {
+  gitStatusMocks.createGitStatusCache.mockClear();
+  gitStatusMocks.createGitStatusCache.mockImplementation(() => ({
+    getStatus: vi.fn(() => null),
+    refresh: vi.fn(),
+    dispose: vi.fn(),
+  }));
+});
 
 const TRUECOLOR_PATTERN = /\[38;2;(\d+);(\d+);(\d+)m/g;
 
@@ -63,6 +81,21 @@ const appState: AppState = {
 };
 
 describe('FooterComponent', () => {
+  it('asks the git cache to refresh and disposes it with the footer', () => {
+    const refresh = vi.fn();
+    const dispose = vi.fn();
+    gitStatusMocks.createGitStatusCache.mockImplementation(() => ({
+      getStatus: () => null,
+      refresh,
+      dispose,
+    }));
+    const footer = new FooterComponent(appState);
+    footer.refreshGitStatus();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    footer.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
   const previousChalkLevel = chalk.level;
 
   beforeEach(() => {

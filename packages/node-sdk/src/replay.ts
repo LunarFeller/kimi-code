@@ -37,6 +37,8 @@ export interface AgentMeta {
   readonly type: AgentType;
   readonly parentAgentId?: string | null;
   readonly swarmItem?: string;
+  readonly profileName?: string;
+  readonly sessionInit?: string;
 }
 
 export interface SessionMeta {
@@ -72,6 +74,7 @@ export interface ResumedAgentState {
   readonly config: AgentConfigData;
   readonly context: AgentContextData;
   readonly replay: readonly AgentReplayRecord[];
+  readonly userTurnCount?: number;
   readonly permission: PermissionData;
   readonly plan: PlanData;
   readonly swarmMode?: boolean | undefined;
@@ -101,8 +104,10 @@ export function limitAgentReplayByTurns(
 }
 
 function isAgentReplayUserTurnRecord(record: AgentReplayRecord): boolean {
-  if (record.type !== 'message') return false;
-  const { message } = record;
+  return record.type === 'message' && isAgentReplayUserTurnMessage(record.message);
+}
+
+export function isAgentReplayUserTurnMessage(message: ContextMessage): boolean {
   if (message.role !== 'user') return false;
   switch (message.origin?.kind) {
     case undefined:

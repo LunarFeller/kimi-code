@@ -651,6 +651,13 @@ export const modelCatalogChangedEventSchema = z.object({
       reason: z.string().min(1),
     }),
   ),
+  retired_default: z
+    .object({
+      from: z.string().min(1),
+      to: z.string().min(1),
+      from_display_name: z.string().min(1),
+    })
+    .optional(),
 });
 
 export const pluginChangedEventSchema = z.object({
@@ -751,6 +758,7 @@ export const turnEndedEventSchema = z.object({
   interruptReason: z
     .enum(['user_cancelled', 'aborted', 'max_steps', 'error', 'filtered', 'blocked'])
     .optional(),
+  traceId: z.string().optional(),
 });
 
 export const turnStepStartedEventSchema = z.object({

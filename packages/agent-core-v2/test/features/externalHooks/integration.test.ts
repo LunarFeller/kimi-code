@@ -58,6 +58,7 @@ import { IPluginService } from '#/app/plugin/plugin';
 import { ISessionManager } from '#/app/sessionManager/sessionManager';
 import { IHostProcessService } from '#/os/interface/hostProcess';
 import { HostProcessService } from '#/os/backends/node-local/hostProcessService';
+import { ITelemetryService } from '#/app/telemetry/telemetry';
 import {
   type SessionCloseReason,
   type SessionCreatedEvent,
@@ -119,6 +120,7 @@ function stubContextMemory(): IAgentContextMemoryService & {
   return {
     _serviceBrand: undefined,
     get: () => [...messages],
+    prefixRevision: () => 0,
     append: (...inserted) => {
       messages.push(...inserted);
     },
@@ -675,6 +677,7 @@ describe('IExternalHooksRunnerService integration', () => {
         },
       });
       activateAgentEventBus(ix);
+      ix.stub(ITelemetryService, { track2: () => {} });
       ix.set(IExternalHooksRunnerService, new SyncDescriptor(ExternalHooksRunnerService));
       ix.set(IAgentExternalHooksService, new SyncDescriptor(AgentExternalHooksService));
       ix.get(IAgentExternalHooksService);
@@ -939,6 +942,7 @@ describe('IExternalHooksRunnerService integration', () => {
           reg.define(IHostProcessService, HostProcessService);
         },
       });
+      ix.stub(ITelemetryService, { track2: () => {} });
       ix.set(IExternalHooksRunnerService, new SyncDescriptor(ExternalHooksRunnerService));
       ix.set(ISessionExternalHooksService, new SyncDescriptor(SessionExternalHooksService));
       ix.get(ISessionExternalHooksService);
@@ -1133,6 +1137,7 @@ describe('IExternalHooksRunnerService integration', () => {
           reg.define(IHostProcessService, HostProcessService);
         },
       });
+      ix.stub(ITelemetryService, { track2: () => {} });
       ix.set(IExternalHooksRunnerService, new SyncDescriptor(ExternalHooksRunnerService));
       ix.set(ISessionExternalHooksService, new SyncDescriptor(SessionExternalHooksService));
       ix.get(ISessionExternalHooksService);
@@ -1215,6 +1220,14 @@ describe('IExternalHooksRunnerService integration', () => {
           origin: { kind: 'system_trigger', name: 'goal' },
         }),
       );
+      eventBus.publish(
+        new TurnStarted({
+          agentId: 'main',
+          turnId: 4,
+          origin: { kind: 'user' },
+          prompt: 'user text',
+        }),
+      );
       const queuedContent = [{ type: 'text' as const, text: 'later' }];
       eventBus.publish(
         new PromptQueued({
@@ -1248,6 +1261,17 @@ describe('IExternalHooksRunnerService integration', () => {
             originKind: 'system_trigger',
             originName: 'goal',
             prompt: undefined,
+          },
+        },
+        {
+          event: 'TurnStarted',
+          matcherValue: 'user',
+          inputData: {
+            sessionTitle: 'My Session',
+            turnId: 4,
+            originKind: 'user',
+            originName: undefined,
+            prompt: 'user text',
           },
         },
         {

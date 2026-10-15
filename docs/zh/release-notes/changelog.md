@@ -6,6 +6,97 @@ outline: 2
 
 本页记录 Kimi Code CLI 每个版本的变更内容。
 
+## 2.2.0（2026-10-14）
+
+### 新功能
+
+- 新增实验性的进度更新功能 NotifyUser（默认关闭）：新会话可展示 Agent 回合内主动发布的进度更新。可在 TUI 的 `/experiments` 面板开启。
+- 新增 `kimi app [path]` 命令，在当前或指定目录打开一个新的 Desktop 会话。
+- 全屏模式新增用户消息摘要条：用户消息滚出视口后保留一行摘要，点击即可跳回原始消息。全屏模式可在 `/settings` 的 TUI mode 设置中开启，或在 `~/.kimi-code/tui.toml` 中设置 `tui_mode = "fullscreen"`。
+
+### 优化
+
+- 用户技能卡片改为高亮提示词展示，并支持按 Ctrl-S 发送技能提示词。
+- Tower 模式：Agent 运行中发送消息会中止当前 turn，并作为独立 turn 执行。
+- 退出时运行 shutdown hooks 期间显示「Shutting down」状态提示，此时按 Ctrl+C 可立即强制退出，无需等待 hook 超时。
+
+### 修复
+
+- 修复 UserPromptSubmit hook 注入文本时对话错位、回复丢失与渲染乱序的问题；不含「message」字段的 hook JSON 输出不再加入对话。
+- 移除 MCP stdio 服务器配置中从未实现的 `executor = "kaos"` 选项；仍在使用该选项的配置会在加载时校验失败。
+- 修复 fork 出的会话会重复触发源会话 cron 任务的问题。
+- 修复了一些已知问题，并做了若干细节优化。更详细的变更记录见 [GitHub](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/CHANGELOG.md)。
+
+## 2.1.1（2026-09-24）
+
+### 优化
+
+- 配置文件与工作区文件的监听默认恢复为开启。如需保持关闭，可将 `[watch] enabled` 设为 `false` 或设置 `KIMI_CODE_WATCH=0`，详见 [`watch`](../configuration/config-files.md#watch)。
+
+### 修复
+
+- 回退 2.1.0 中部分过于严格的防御性改动。
+
+## 2.1.0（2026-09-23）
+
+### 新功能
+
+- 新增实验性全屏模式开关，可在 `/settings` 的 TUI mode 设置中开启，或在 `~/.kimi-code/tui.toml` 中设置 `tui_mode = "fullscreen"`，重启 Kimi Code 后生效。
+- 全屏模式下，点击折叠块即可展开或收起。
+- 全屏界面新增可点击的 "Jump to bottom" 指示器。
+
+### 优化
+
+- 缩短 CLI 启动时间并降低内存占用。
+- 默认关闭对配置文件和工作区文件的监听，如需开启可将 `[watch] enabled` 设为 `true` 或设置 `KIMI_CODE_WATCH=1`，详见 [`watch`](../configuration/config-files.md#watch)。
+
+### 修复
+
+- 加强工作区安全限制：文件工具无法再通过符号链接访问工作目录外的文件，项目本地配置仅在工作区受信任后生效，后台 git 操作不再执行仓库 git 配置中的命令，并拒绝解析结果为 home 目录或文件系统根目录的附加目录。
+- 修复了一些已知问题，并做了若干细节优化。更详细的变更记录见 [GitHub](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/CHANGELOG.md)。
+
+## 2.0.2（2026-09-19）
+
+### 优化
+
+- 优化系统提示词：Agent 不再假设当前工作目录就是项目根目录。
+
+### 修复
+
+- 修复切换到上下文窗口更小的模型后 compaction 失败的问题。
+- 修复恢复会话后新消息偶尔出现在对话中旧位置的问题。
+- 修复 Agent 运行期间发送的消息有时在聊天中重复显示的问题。
+- web：改进交互体验并修复已知问题。
+
+## 2.0.1（2026-09-18）
+
+### 优化
+
+- 移除系统提示词中禁止访问工作目录以外所有文件的规则。
+- 供应商可通过 `config.toml` 中的 [`api_key_env`](../configuration/providers.md) 从指定的环境变量读取 API 密钥。
+- 工作区文件监听不再无上限地扫描项目根目录，并新增 `[watch] enabled` 配置与 `KIMI_CODE_WATCH` 环境变量，可完全关闭文件监听，详见 [`watch`](../configuration/config-files.md#watch)。
+- 「必要时询问」权限模式下，无法静态分析的 bash 命令不再触发审批请求。
+- `kimi install-app` 子命令更名为 `kimi install-desktop`，旧名称仍作为隐藏别名可用。
+
+### 修复
+
+- 修复了一些已知问题，并做了若干细节优化。更详细的变更记录见 [GitHub](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/CHANGELOG.md)。
+
+## 2.0.0（2026-09-17）
+
+### 新功能
+
+- 新增 `/desktop` 斜杠命令（别名 `/install-desktop`）与 `kimi install-app` 子命令。
+- Mermaid 代码块现在会在终端中渲染为图表；可在 `/settings` → Mermaid diagrams 中关闭，或在 tui.toml 的 `[markdown]` 配置段中设置 `mermaid = "off"`。
+
+### 优化
+
+- 内置浏览器插件更名为 "Kimi Browser Extension"，插件面板、插件市场与文档中的名称同步更新。
+
+### 修复
+
+- 修复了一些已知问题，并做了若干细节优化。更详细的变更记录见 [GitHub](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/CHANGELOG.md)。
+
 ## 0.43.1（2026-09-15）
 
 ### 新功能

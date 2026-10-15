@@ -80,6 +80,7 @@ import { TurnStarted } from '#/agent/loop/turnEvents';
 import { IAgentPluginService } from '#/agent/plugin/agentPlugin';
 import { ILogService } from '#/_base/log/log';
 import { IPluginService } from '#/app/plugin/plugin';
+import { IProviderDiscoveryService } from '#/app/kosongConfig/discovery';
 import { IAppendLogStore } from '#/persistence/interface/appendLogStore';
 import { InMemoryStorageService } from '#/persistence/backends/memory/inMemoryStorageService';
 import { BlobStoreService } from '#/persistence/backends/node-fs/blobStoreService';
@@ -119,6 +120,7 @@ import {
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { recordingTelemetry, type TelemetryRecord } from '../../app/telemetry/stubs';
 import { stubAgentContext } from '../../agent/agentContext/stubs';
+import { stubProviderDiscovery } from '../../stubs';
 
 const noopLog = {
   _serviceBrand: undefined,
@@ -335,6 +337,7 @@ describe('AgentLifecycleService', () => {
       additionalDirs: [],
     } as unknown as ISessionWorkspaceContext);
     ix.stub(IPluginService, pluginServiceStub);
+    ix.stub(IProviderDiscoveryService, stubProviderDiscovery());
     ix.stub(IConfigService, {
       ready: Promise.resolve(),
       get: (() => undefined) as IConfigService['get'],
@@ -826,6 +829,24 @@ describe('AgentLifecycleService', () => {
     releaseDrain();
     await removal;
     expect(disposed).toEqual(['main']);
+  });
+
+  it('remove finishes once the quiesce deadline passes even if the agent loop never settles', async () => {
+    const svc = ix.get(IAgentLifecycleService);
+    const main = await svc.create({ agentId: 'main' });
+    const disposed: string[] = [];
+    disposables.add(svc.onDidClose((agent) => disposed.push(agent.agentId)));
+    loopSettled.mockImplementation(() => new Promise<void>(() => {}));
+    vi.useFakeTimers();
+    try {
+      const removal = svc.remove(main);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(disposed).toEqual(['main']);
+      await removal;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('remove cancels queued turns before waiting for the active turn to settle', async () => {

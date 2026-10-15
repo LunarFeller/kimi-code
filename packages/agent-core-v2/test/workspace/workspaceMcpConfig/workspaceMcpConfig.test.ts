@@ -37,16 +37,20 @@ import { stubLog } from '../../_base/log/stubs';
 
 const watchFires = new Map<string, Emitter<WatchChange>>();
 
-vi.mock('#human/utils/watch', () => ({
-  watch: (path: string) => {
+vi.mock('#human/utils/watch', () => {
+  const watch = (path: string) => {
     let emitter = watchFires.get(path);
     if (emitter === undefined) {
       emitter = new Emitter<WatchChange>();
       watchFires.set(path, emitter);
     }
     return { ready: Promise.resolve(), onDidChange: emitter.event, dispose: () => {} };
-  },
-}));
+  };
+  return {
+    watch,
+    watchCandidates: (root: string) => watch(root),
+  };
+});
 
 function stdioConfig(command: string): McpServerConfig {
   return { transport: 'stdio', command, args: [] };
@@ -195,10 +199,10 @@ describe('WorkspaceMcpConfigService', () => {
   }, 20000);
 
   it('exposes the [mcp] section as tunables, resolved live', async () => {
-    const service = createService({ startupTimeoutMs: 1234, toolTimeoutMs: 5678 });
+    const service = createService({ startupTimeoutMs: 1234, toolTimeoutMs: 5678, defaultDeferred: true });
     await service.ready;
 
-    expect(service.tunables()).toEqual({ startupTimeoutMs: 1234, toolTimeoutMs: 5678 });
+    expect(service.tunables()).toEqual({ startupTimeoutMs: 1234, toolTimeoutMs: 5678, defaultDeferred: true });
   });
 
   it('publishes the diff when a watched config file changes', async () => {

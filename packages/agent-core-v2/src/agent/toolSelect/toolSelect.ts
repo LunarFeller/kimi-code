@@ -12,7 +12,14 @@ export interface ShapedToolEntry extends ToolInfo {
 export interface LoadToolsResult {
   readonly toLoad: readonly string[];
   readonly alreadyAvailable: readonly string[];
+  readonly alreadyCallable: readonly string[];
+  readonly staleLoaded: readonly string[];
+  readonly policyDenied: readonly string[];
   readonly unknown: readonly string[];
+  readonly escalated: Readonly<Record<string, number>>;
+  readonly consecutiveFailures: number;
+  readonly suggestions: Readonly<Record<string, readonly string[]>>;
+  readonly loadable: readonly string[];
 }
 
 export interface IAgentToolSelectService {

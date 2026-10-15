@@ -8,7 +8,7 @@ import type { TokenUsage } from '#human/llm/usage';
 import type { Protocol, ProtocolProviderOptions } from '../protocol/protocol';
 import type { ProviderConfig } from '../provider/provider';
 
-import type { ModelRecord } from './model';
+import type { ModelRecord, ModelUpgrade } from './model';
 import { effectiveModelConfig } from './model-auth';
 import type {
   ModelRequestEvent,
@@ -59,6 +59,13 @@ export const modelCatalogItemSchema = z.object({
   capabilities: z.array(z.string()).optional(),
   support_efforts: z.array(z.string()).optional(),
   default_effort: z.string().optional(),
+  upgrade: z
+    .object({
+      model: z.string().min(1),
+      migration_markdown: z.string(),
+      retirement_at: z.string().optional(),
+    })
+    .optional(),
 });
 export type ModelCatalogItem = z.infer<typeof modelCatalogItemSchema>;
 
@@ -74,6 +81,7 @@ export const providerCatalogItemSchema = z.object({
   type: z.string().min(1),
   base_url: z.string().min(1).optional(),
   default_model: z.string().min(1).optional(),
+  api_key_env: z.string().optional(),
   has_api_key: z.boolean(),
   status: providerCatalogStatusSchema,
   models: z.array(z.string().min(1)).optional(),
@@ -89,6 +97,16 @@ export type SetDefaultModelResponse = z.infer<typeof setDefaultModelResponseSche
 export interface ProviderCredentialState {
   readonly hasApiKey: boolean;
   readonly hasOAuthToken: boolean;
+  readonly hasCredentialConflict: boolean;
+}
+
+function toProtocolModelUpgrade(upgrade: ModelUpgrade | undefined) {
+  if (upgrade === undefined) return undefined;
+  return {
+    model: upgrade.model,
+    migration_markdown: upgrade.migrationMarkdown,
+    retirement_at: upgrade.retirementAt,
+  };
 }
 
 export function toProtocolModel(
@@ -104,6 +122,7 @@ export function toProtocolModel(
     capabilities: effectiveModelConfig(record, providerType ?? model.providerType).capabilities,
     support_efforts: model.supportEfforts === undefined ? undefined : [...model.supportEfforts],
     default_effort: model.defaultEffort,
+    upgrade: toProtocolModelUpgrade(record.upgrade),
   };
 }
 
@@ -121,6 +140,7 @@ export function toProtocolModelFallback(
     capabilities: effective.capabilities,
     support_efforts: effective.supportEfforts,
     default_effort: effective.defaultEffort,
+    upgrade: toProtocolModelUpgrade(record.upgrade),
   };
 }
 
@@ -139,8 +159,13 @@ export function toProtocolProvider(
     type: provider.type ?? 'openai',
     base_url: provider.baseUrl,
     default_model: defaultModel,
+    api_key_env: provider.apiKeyEnv,
     has_api_key: credential.hasApiKey,
-    status: credential.hasApiKey || credential.hasOAuthToken ? 'connected' : 'unconfigured',
+    status: credential.hasCredentialConflict
+      ? 'error'
+      : credential.hasApiKey || credential.hasOAuthToken
+        ? 'connected'
+        : 'unconfigured',
     models: providerModels,
   };
 }

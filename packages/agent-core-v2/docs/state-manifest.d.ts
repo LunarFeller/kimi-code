@@ -66,6 +66,7 @@
 //     llm.requestTrace                                src/agent/llmRequester/llmRequestOps.ts
 //     llmRequester.emittedThinkingEffortWarnings      src/agent/llmRequester/llmRequesterService.ts
 //     llmRequester.lastConfigLogSignature             src/agent/llmRequester/llmRequesterService.ts
+//     llmRequester.lastTurnRequest                    src/agent/llmRequester/llmRequesterService.ts
 //     llmRequester.mediaDegradedTurns                 src/agent/llmRequester/llmRequesterService.ts
 //     llmRequester.mediaStrippedTurns                 src/agent/llmRequester/llmRequesterService.ts
 //     llmRequester.turnConfigs                        src/agent/llmRequester/llmRequesterService.ts
@@ -116,7 +117,6 @@
 //     toolExecutor.toolCallDupTypes                   src/agent/toolExecutor/toolExecutorService.ts
 //     toolSelect.pendingLoaded                        src/agent/toolSelect/toolSelectService.ts
 //     tower                                           src/features/tower/towerOps.ts
-//     tower.base                                      src/features/tower/towerOps.ts
 //     tower.owner                                     src/features/tower/towerOps.ts
 //     turn                                            src/agent/loop/turnOps.ts
 //     userTool                                        src/agent/userTool/userToolOps.ts
@@ -157,6 +157,7 @@ export interface WorkspaceStateSnapshot {
         readonly mermaid?: string;
         readonly d2?: string;
         readonly productSpecific?: boolean;
+        readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
         readonly experimentalFlag?: string;
       }[];
       readonly skipped?: readonly /* SkippedSkill — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -194,6 +195,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }) => void;
     register: (skill: /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -221,6 +223,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }, options?: {
       readonly replace?: boolean;
@@ -256,6 +259,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     } | undefined;
     getPluginSkill: (pluginId: string, name: string) => /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -283,6 +287,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     } | undefined;
     renderSkillPrompt: (skill: /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -310,6 +315,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }, rawArgs: string, context?: {
       readonly sessionId?: string;
@@ -339,6 +345,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }[];
     listInvocableSkills: () => readonly /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -366,6 +373,7 @@ export interface WorkspaceStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }[];
     getSkillRoots: () => readonly string[];
@@ -422,6 +430,7 @@ export interface SessionStateSnapshot {
         readonly mermaid?: string;
         readonly d2?: string;
         readonly productSpecific?: boolean;
+        readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
         readonly experimentalFlag?: string;
       }[];
       readonly skipped?: readonly /* SkippedSkill — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -459,6 +468,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }) => void;
     register: (skill: /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -486,6 +496,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }, options?: {
       readonly replace?: boolean;
@@ -521,6 +532,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     } | undefined;
     getPluginSkill: (pluginId: string, name: string) => /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -548,6 +560,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     } | undefined;
     renderSkillPrompt: (skill: /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -575,6 +588,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }, rawArgs: string, context?: {
       readonly sessionId?: string;
@@ -604,6 +618,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }[];
     listInvocableSkills: () => readonly /* SkillDefinition — packages/agent-core-v2/src/features/skill/catalog/types.ts */ {
@@ -631,6 +646,7 @@ export interface SessionStateSnapshot {
       readonly mermaid?: string;
       readonly d2?: string;
       readonly productSpecific?: boolean;
+      readonly scopes?: readonly (/* SkillScope — packages/agent-core-v2/src/features/skill/catalog/types.ts */ 'tui' | 'web')[];
       readonly experimentalFlag?: string;
     }[];
     getSkillRoots: () => readonly string[];
@@ -708,12 +724,19 @@ export interface AgentStateSnapshot {
     readonly content: (/* ContentPart — packages/agent-core-v2/src/human/llm/message.ts */ /* TextPart — packages/agent-core-v2/src/human/llm/message.ts */ {
       type: 'text';
       text: string;
+      meta?: /* TextPartMeta — packages/agent-core-v2/src/human/llm/message.ts */ {
+        source?: string;
+        contentType?: string;
+        activationId?: string;
+        [key: string]: unknown;
+      };
     } | /* ThinkPart — packages/agent-core-v2/src/human/llm/message.ts */ {
       type: 'think';
       think: string;
       encrypted?: string;
       detailsIndex?: number;
       hidden?: boolean;
+      reasoningKey?: string;
     } | /* ImageURLPart — packages/agent-core-v2/src/human/llm/message.ts */ {
       type: 'image_url';
       imageUrl: {
@@ -757,6 +780,8 @@ export interface AgentStateSnapshot {
     readonly providerMessageId?: string;
     readonly origin?: /* UserPromptOrigin — packages/agent-core-v2/src/agent/contextMemory/types.ts */ {
       readonly kind: 'user';
+      readonly inTurn?: true;
+      readonly clientMetadata?: readonly Readonly<Record<string, unknown>>[];
       readonly skillActivations?: readonly /* BundledSkillActivation — packages/agent-core-v2/src/agent/contextMemory/types.ts */ {
         readonly activationId: string;
         readonly skillName: string;
@@ -773,6 +798,8 @@ export interface AgentStateSnapshot {
       }[];
     } | /* SkillActivationOrigin — packages/agent-core-v2/src/agent/contextMemory/types.ts */ {
       readonly kind: 'skill_activation';
+      readonly inTurn?: true;
+      readonly clientMetadata?: readonly Readonly<Record<string, unknown>>[];
       readonly activationId: string;
       readonly skillName: string;
       readonly skillArgs?: string;
@@ -788,6 +815,7 @@ export interface AgentStateSnapshot {
       }[];
     } | /* PluginCommandOrigin — packages/agent-core-v2/src/agent/contextMemory/types.ts */ {
       readonly kind: 'plugin_command';
+      readonly inTurn?: true;
       readonly activationId: string;
       readonly pluginId: string;
       readonly commandName: string;
@@ -903,6 +931,18 @@ export interface AgentStateSnapshot {
       detail?: unknown;
     }>;
     readonly note?: string;
+    readonly usage?: /* TokenUsage — packages/agent-core-v2/src/human/llm/usage.ts */ {
+      inputOther: number;
+      output: number;
+      inputCacheRead: number;
+      inputCacheCreation: number;
+      raw?: Record<string, unknown>;
+    };
+    readonly llmTiming?: /* ContextMessageTiming — packages/agent-core-v2/src/agent/contextMemory/types.ts */ {
+      readonly llmFirstTokenLatencyMs?: number;
+      readonly llmStreamDurationMs?: number;
+    };
+    readonly durationMs?: number;
   })[];
   // src/agent/contextProjector/contextProjectorService.ts
   'contextProjector.lastRepairSignature': string | null;
@@ -933,6 +973,15 @@ export interface AgentStateSnapshot {
   // src/agent/llmRequester/llmRequesterService.ts
   'llmRequester.emittedThinkingEffortWarnings': Set<string>;
   'llmRequester.lastConfigLogSignature': string | undefined;
+  'llmRequester.lastTurnRequest': /* AgentLLMTurnRequestSnapshot — packages/agent-core-v2/src/agent/llmRequester/llmRequester.ts */ {
+    readonly modelAlias: string;
+    readonly contextRevision: number;
+    readonly toolsHash: string;
+    readonly systemPromptHash: string;
+    readonly inputTokens?: number;
+    readonly startedAt: number;
+    readonly finishedAt: number;
+  } | undefined;
   'llmRequester.mediaDegradedTurns': Set<number>;
   'llmRequester.mediaStrippedTurns': Map<number, /* MediaStripSnapshot — packages/agent-core-v2/src/agent/contextProjector/contextProjector.ts */ {
     readonly "__@mediaStripSnapshotBrand": undefined;
@@ -1000,12 +1049,19 @@ export interface AgentStateSnapshot {
   'media.resolved': Map<string, /* ContentPart — packages/agent-core-v2/src/human/llm/message.ts */ /* TextPart — packages/agent-core-v2/src/human/llm/message.ts */ {
     type: 'text';
     text: string;
+    meta?: /* TextPartMeta — packages/agent-core-v2/src/human/llm/message.ts */ {
+      source?: string;
+      contentType?: string;
+      activationId?: string;
+      [key: string]: unknown;
+    };
   } | /* ThinkPart — packages/agent-core-v2/src/human/llm/message.ts */ {
     type: 'think';
     think: string;
     encrypted?: string;
     detailsIndex?: number;
     hidden?: boolean;
+    reasoningKey?: string;
   } | /* ImageURLPart — packages/agent-core-v2/src/human/llm/message.ts */ {
     type: 'image_url';
     imageUrl: {
@@ -1259,8 +1315,6 @@ export interface AgentStateSnapshot {
   // src/features/tower/towerOps.ts
   // replayable · durable — folds: TowerModeEnter, TowerModeExit
   'tower': boolean;
-  // replayable · durable — folds: TowerModeEnter, TowerModeExit
-  'tower.base': string | null;
   // replayable · durable — folds: TowerModeEnter, TowerModeExit
   'tower.owner': string | undefined;
 }

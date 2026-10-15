@@ -1,3 +1,5 @@
+import type { TowerExitReason } from '#/features/tower/tower';
+
 import type { TelemetryPrimitive } from './telemetry';
 
 export interface TelemetryEventMeta {
@@ -58,6 +60,7 @@ export interface TurnStartedEvent {
   provider_type?: string;
   protocol?: string;
   thinking_effort?: string;
+  enabled_plugins?: string;
 }
 
 export interface TurnInterruptedEvent {
@@ -81,6 +84,7 @@ export interface TurnEndedEvent {
   protocol?: string;
   thinking_effort?: string;
   trace_id?: string;
+  enabled_plugins?: string;
 }
 
 export interface PromptCacheProbeEvent {
@@ -92,6 +96,10 @@ export interface PromptCacheProbeEvent {
   input_cache_read: number;
   input_cache_creation: number;
   output_tokens: number;
+  tools_match?: boolean;
+  system_prompt_match?: boolean;
+  parent_input_tokens?: number;
+  parent_request_gap_ms?: number;
 }
 
 export type ToolCallOutcome = 'success' | 'error' | 'cancelled';
@@ -197,6 +205,37 @@ export interface PlanResolvedEvent {
 
 export interface PlanEnterResolvedEvent {
   outcome: 'auto_approved';
+}
+
+export interface TowerModeEnterEvent {
+  outcome: 'entered' | 'rejected';
+  reason?: 'not-main-agent' | 'experiment-off' | 'feature-not-assembled' | 'owned-by-live-session';
+}
+
+export interface TowerModeExitEvent {
+  reason: TowerExitReason;
+}
+
+export interface SwarmModeTransitionEvent {
+  trigger: 'manual' | 'task' | 'tool';
+}
+
+export interface ExternalHookResolvedEvent {
+  event: string;
+  action: 'allow' | 'block';
+  matched_count: number;
+  failed_count: number;
+}
+
+export interface RemoteControlToggleEvent {
+  enabled: boolean;
+  outcome: 'ok' | 'already_running' | 'rejected' | 'error';
+}
+
+export interface PluginToggleEvent {
+  plugin_id: string;
+  enabled: boolean;
+  enabled_plugins?: string;
 }
 
 export interface CompactionFinishedEvent {
@@ -352,6 +391,21 @@ export interface AgentsMdReminderShownEvent {
   tool_name: string;
   reminded_count: number;
   trace_id?: string;
+}
+
+export interface NotifyUserNudgeShownEvent {
+  turn_id?: number;
+  rounds_since_notify: number;
+  nudge_index: number;
+}
+
+export interface NotifyUserSentEvent {
+  turn_id: number;
+  rounds_since_notify: number;
+  after_nudge: boolean;
+  title_chars: number;
+  message_chars: number;
+  displayed: boolean;
 }
 
 export interface GrepToolRgFallbackEvent {
@@ -582,6 +636,8 @@ export const telemetryEventDefinitions = {
       provider_type: 'Provider protocol type',
       protocol: 'Request protocol',
       thinking_effort: 'Effective thinking effort the turn runs with',
+      enabled_plugins:
+        'Comma-separated sorted ids of enabled, loaded plugins when the turn starts; empty string for a known empty set, absent when no plugin snapshot is available',
     },
   }),
   turn_interrupted: defineAgentTelemetryEvent<TurnInterruptedEvent>({
@@ -613,12 +669,14 @@ export const telemetryEventDefinitions = {
       thinking_effort: 'Effective thinking effort the turn ran with',
       trace_id:
         'Trace id of the most recent LLM request in this turn; absent for non-Kimi protocols',
+      enabled_plugins:
+        'Comma-separated sorted ids of enabled, loaded plugins when the turn ends; empty string for a known empty set, absent when no plugin snapshot is available',
     },
   }),
   prompt_cache_probe: defineAgentTelemetryEvent<PromptCacheProbeEvent>({
     owner: 'kimi-code',
     comment:
-      'An agent whose first request is expected to hit the prompt cache reports that request\'s cache usage.',
+      'An agent whose first request is expected to hit the prompt cache reports that request\'s cache usage and how its prefix compares with the last turn request the parent agent completed before the fork.',
     properties: {
       source: 'Why a cache hit was expected for this request',
       turn_id: 'Per-agent turn index of the probed request',
@@ -628,6 +686,14 @@ export const telemetryEventDefinitions = {
       input_cache_read: 'Cache-read input tokens of the probed request',
       input_cache_creation: 'Cache-creation input tokens of the probed request',
       output_tokens: 'Output tokens of the probed request',
+      tools_match:
+        "Whether the provider-visible tool table hash equals the parent's; absent when the parent completed no turn request before the fork, or its context was rewritten (undo, compaction) after the last one",
+      system_prompt_match:
+        "Whether the system prompt hash equals the parent's; absent when the parent completed no turn request before the fork, or its context was rewritten (undo, compaction) after the last one",
+      parent_input_tokens:
+        "Total input tokens of the parent's last completed turn request before the fork, i.e. the prefix this request could read from the cache; absent when there is none, or the parent's context was rewritten (undo, compaction) after it",
+      parent_request_gap_ms:
+        "Milliseconds from the parent's last completed turn request finishing to the probed request starting; absent when the parent completed no turn request before the fork, or its context was rewritten (undo, compaction) after the last one",
     },
   }),
   tool_call: defineAgentTelemetryEvent<ToolCallEvent>({
@@ -762,6 +828,64 @@ export const telemetryEventDefinitions = {
     comment: 'A request to enter plan mode is resolved.',
     properties: {
       outcome: 'How the request was resolved',
+    },
+  }),
+  tower_mode_enter: defineAgentTelemetryEvent<TowerModeEnterEvent>({
+    owner: 'kimi-code',
+    comment: 'A request to enter tower mode resolves.',
+    properties: {
+      outcome: 'Whether tower mode was entered or the request was rejected',
+      reason: 'Why the request was rejected; omitted when tower mode was entered',
+    },
+  }),
+  tower_mode_exit: defineAgentTelemetryEvent<TowerModeExitEvent>({
+    owner: 'kimi-code',
+    comment: 'Tower mode is exited.',
+    properties: {
+      reason:
+        'Why tower mode was exited: the user turned it off, another session took the tower over, or a foreign tower was reconciled away',
+    },
+  }),
+  swarm_mode_entered: defineAgentTelemetryEvent<SwarmModeTransitionEvent>({
+    owner: 'kimi-code',
+    comment: 'Swarm mode is entered.',
+    properties: {
+      trigger: 'What triggered swarm mode',
+    },
+  }),
+  swarm_mode_exited: defineAgentTelemetryEvent<SwarmModeTransitionEvent>({
+    owner: 'kimi-code',
+    comment: 'Swarm mode is exited.',
+    properties: {
+      trigger: 'What originally triggered the swarm mode being exited',
+    },
+  }),
+  external_hook_resolved: defineTelemetryEvent<ExternalHookResolvedEvent>({
+    owner: 'kimi-code',
+    comment: 'An external hook trigger finishes running its matched hooks.',
+    properties: {
+      event: 'Hook event type (e.g. PreToolUse, UserPromptSubmit, Stop)',
+      action: 'Whether the trigger resolved to allow or block',
+      matched_count: 'Number of hooks that ran for the trigger',
+      failed_count: 'Number of hooks that failed (timeout, spawn error, or a non-zero exit code other than 2)',
+    },
+  }),
+  remote_control_toggle: defineTelemetryEvent<RemoteControlToggleEvent>({
+    owner: 'kimi-code',
+    comment: 'A request to toggle the Remote Control tunnel resolves.',
+    properties: {
+      enabled: 'Whether the request was to enable or disable the tunnel',
+      outcome: 'How the request resolved',
+    },
+  }),
+  plugin_toggle: defineTelemetryEvent<PluginToggleEvent>({
+    owner: 'kimi-code',
+    comment: 'An installed plugin is enabled or disabled.',
+    properties: {
+      plugin_id: 'Id of the toggled plugin',
+      enabled: 'Whether the plugin is enabled after the toggle',
+      enabled_plugins:
+        'Comma-separated sorted ids of enabled, loaded plugins after the toggle commits; empty string for a known empty set',
     },
   }),
   compaction_finished: defineAgentTelemetryEvent<CompactionFinishedEvent>({
@@ -978,6 +1102,27 @@ export const telemetryEventDefinitions = {
       reminded_count: 'Number of AGENTS.md paths listed in the reminder',
       trace_id:
         'Trace id of the LLM request that produced the tool call; absent for non-Kimi protocols',
+    },
+  }),
+  notify_user_nudge_shown: defineAgentTelemetryEvent<NotifyUserNudgeShownEvent>({
+    owner: 'kimi-code',
+    comment: 'A reminder asking the agent to post a NotifyUser update is queued for context injection.',
+    properties: {
+      turn_id: 'Per-agent turn index (main or subagent); pair with agent_id to locate a turn within a session; omitted when no turn is active',
+      rounds_since_notify: 'Tool-call rounds (assistant steps with tool calls) since the turn started or the last NotifyUser call',
+      nudge_index: 'Position of this reminder within the current silent stretch; 1 for the first, higher when earlier reminders went unanswered',
+    },
+  }),
+  notify_user_sent: defineAgentTelemetryEvent<NotifyUserSentEvent>({
+    owner: 'kimi-code',
+    comment: 'The agent posted a NotifyUser progress update.',
+    properties: {
+      turn_id: 'Per-agent turn index (main or subagent); pair with agent_id to locate a turn within a session',
+      rounds_since_notify: 'Tool-call rounds (assistant steps with tool calls) before this update since the turn started or the previous NotifyUser call',
+      after_nudge: 'Whether a NotifyUser reminder was injected since the turn started or the previous NotifyUser call',
+      title_chars: 'Length of the update title in UTF-16 code units; the title text itself is not recorded',
+      message_chars: 'Length of the update message in UTF-16 code units; the message text itself is not recorded',
+      displayed: 'Whether the update was shown to the user; false when the feature was turned off mid-session or the host cannot display updates',
     },
   }),
   grep_tool_rg_fallback: defineAgentTelemetryEvent<GrepToolRgFallbackEvent>({

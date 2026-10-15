@@ -108,7 +108,7 @@ You must first complete OAuth login with a Kimi Code account via `/login`; data 
 #### How to use
 
 1. Describe your need in natural language, and Kimi Code will automatically invoke the data capabilities
-2. Explicitly trigger the data query skill with `/skill:kimi-datasource`
+2. Explicitly trigger the data query skill with `/skill:kimi-datasource:kimi-datasource`
 
 #### What you can do
 
@@ -166,9 +166,9 @@ Look up national (GB), industry, local, and association standards by number or t
 
 <a id="kimi-webbridge"></a>
 
-### Kimi Browser Extension <Badge type="tip" text="v1.11.4" />
+### Kimi Browser Extension <Badge type="tip" text="v2.0.11" />
 
-Kimi Browser Extension lets AI drive your browser directly: not an emulator, not a crawler, but the browser you use every day, with your login sessions and cookies. AI can open pages, read content, click buttons, fill in forms, and take screenshots just like you do, taking repetitive web operations off your hands. See the [Kimi Browser Extension site](https://www.kimi.com/features/webbridge) for a product overview.
+Kimi Browser Extension lets AI drive your browser directly: not an emulator, not a crawler, but the browser you use every day, with your login sessions and cookies. AI can open pages, read content, click buttons, fill in forms, and take screenshots just like you do, taking repetitive web operations off your hands. See the [Kimi Browser Extension site](https://www.kimi.com/en/products/kimi-browser-extension) for a product overview.
 
 #### Install the browser extension
 
@@ -275,7 +275,7 @@ Supported fields:
 
 | Field | Description |
 | --- | --- |
-| `name` | Required; serves as the plugin id. Must match `[a-z0-9][a-z0-9_-]{0,63}` |
+| `name` | Required; serves as the plugin id. Must match `[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*(@[A-Za-z0-9_-]+)?` |
 | `version`, `description`, `keywords`, `author`, `homepage`, `license` | Display metadata |
 | `interface` | Shown in `/plugins`: `displayName`, `shortDescription`, `longDescription`, `developerName`, `websiteURL` |
 | `skills` | One or more `./` paths within the plugin root; if omitted, root `SKILL.md` is the single Skill root |
@@ -400,7 +400,9 @@ my-plugin/
       SKILL.md
 ```
 
-`sessionStart.skill` loads a plugin Skill into the main Agent at session start, making it suitable for initialization instructions, workflow rules, or mapping terminology from other tools to Kimi Code CLI. It only injects text; it does not execute code.
+`sessionStart.skill` loads a plugin Skill into the main Agent at session start, making it suitable for initialization instructions, workflow rules, or mapping terminology from other tools to Kimi Code CLI. It only injects text; it does not execute code. The value is the Skill's frontmatter name as declared inside the plugin, without the `<plugin-id>:` prefix.
+
+Plugin Skills are listed and invoked under the qualified name `<plugin-id>:<skill-name>` — for example `/skill:my-plugin:using-my-plugin` — mirroring [plugin slash commands](#plugin-slash-commands). This keeps same-named Skills from different plugins distinct, and a bare skill name never resolves to a plugin Skill. If a plugin command and a plugin Skill share the same name, `/plugin-id:name` runs the command; invoke the Skill with the explicit `/skill:plugin-id:name` form.
 
 Regardless of how a Skill is loaded (`sessionStart.skill`, `/skill:<name>`, or automatic model invocation), `skillInstructions` appears alongside that plugin's Skill.
 

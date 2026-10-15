@@ -46,6 +46,7 @@ const StringRecordSchema = z.record(z.string(), z.string());
 export const ProviderConfigSchema = z.object({
   type: ProviderTypeSchema,
   apiKey: z.string().optional(),
+  apiKeyEnv: z.string().optional(),
   baseUrl: z.string().optional(),
   defaultModel: z.string().optional(),
   oauth: OAuthRefSchema.optional(),
@@ -55,6 +56,12 @@ export const ProviderConfigSchema = z.object({
 });
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+
+const ModelUpgradeSchema = z.object({
+  model: z.string().min(1),
+  migrationMarkdown: z.string(),
+  retirementAt: z.string().optional(),
+});
 
 const ModelAliasBaseSchema = z.object({
   provider: z.string(),
@@ -72,6 +79,7 @@ const ModelAliasBaseSchema = z.object({
   offEffort: z.string().optional(),
   betaApi: z.boolean().optional(),
   baseUrl: z.string().optional(),
+  upgrade: ModelUpgradeSchema.optional(),
 });
 
 export const ModelAliasOverrideSchema = ModelAliasBaseSchema.omit({
@@ -80,6 +88,7 @@ export const ModelAliasOverrideSchema = ModelAliasBaseSchema.omit({
   protocol: true,
   betaApi: true,
   baseUrl: true,
+  upgrade: true,
 }).partial();
 
 export type ModelAliasOverrides = z.infer<typeof ModelAliasOverrideSchema>;
@@ -231,7 +240,7 @@ export const McpServerStdioConfigSchema = z.object({
   args: z.array(z.string()).optional(),
   env: StringRecordSchema.optional(),
   cwd: z.string().optional(),
-  executor: z.enum(['local', 'kaos']).optional(),
+  executor: z.enum(['local']).optional(),
   ...McpServerCommonFields,
 });
 
@@ -288,6 +297,7 @@ export const KimiConfigSchema = z.object({
   yolo: z.boolean().optional(),
   defaultPermissionMode: PermissionModeSchema.optional(),
   defaultPlanMode: z.boolean().optional(),
+  autoSessionTitle: z.boolean().optional(),
   permission: PermissionConfigSchema.optional(),
   hooks: z.array(HookDefSchema).optional(),
   services: ServicesConfigSchema.optional(),
@@ -337,6 +347,7 @@ export const KimiConfigPatchSchema = z
     yolo: z.boolean().optional(),
     defaultPermissionMode: PermissionModeSchema.optional(),
     defaultPlanMode: z.boolean().optional(),
+    autoSessionTitle: z.boolean().optional(),
     permission: PermissionConfigPatchSchema.optional(),
     hooks: z.array(HookDefSchema).optional(),
     services: ServicesConfigPatchSchema.optional(),

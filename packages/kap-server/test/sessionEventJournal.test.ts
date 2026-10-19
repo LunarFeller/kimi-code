@@ -20,6 +20,7 @@ const fsMock = vi.hoisted(() => ({
   statFailures: 0,
   statFailuresAfterAppend: 0,
   rangeReadFailures: 0,
+  partialAppends: [] as { requested: number; written: number }[],
 }));
 
 vi.mock('node:fs', async (importActual) => {
@@ -71,7 +72,9 @@ vi.mock('node:fs/promises', async (importActual) => {
       if (prefixBytes > 0) {
         fsMock.appendPrefixBytes = 0;
         const bytes = Buffer.isBuffer(args[1]) ? args[1] : Buffer.from(String(args[1]), 'utf8');
-        await actual.appendFile(args[0], bytes.subarray(0, prefixBytes));
+        const prefix = bytes.subarray(0, prefixBytes);
+        await actual.appendFile(args[0], prefix);
+        fsMock.partialAppends.push({ requested: bytes.byteLength, written: prefix.byteLength });
         fsMock.statFailures += fsMock.statFailuresAfterAppend;
         fsMock.statFailuresAfterAppend = 0;
         throw enospc();
@@ -120,6 +123,7 @@ describe('SessionEventJournal', () => {
     fsMock.statFailures = 0;
     fsMock.statFailuresAfterAppend = 0;
     fsMock.rangeReadFailures = 0;
+    fsMock.partialAppends = [];
     dir = await mkdtemp(join(tmpdir(), 'kimi-journal-test-'));
     filePath = join(dir, 'sess_1.jsonl');
   });
@@ -520,7 +524,8 @@ describe('SessionEventJournal', () => {
     const first = envelope(1);
     const second = { ...envelope(2), payload: { text: '你好🙂\n"尾巴' } };
     const third = envelope(3);
-    const initial = JSON.stringify({ kind: 'journal_header', version: 1, epoch: 'ep_example', created_at: 0 }) + '\n' +
+    const header = { kind: 'journal_header', version: 1, epoch: 'ep_example', created_at: 0 };
+    const initial = JSON.stringify(header) + '\n' +
       JSON.stringify({ kind: 'event', seq: 1, envelope: first }) + '\n';
     await writeFile(filePath, initial);
     const healthy = await SessionEventJournal.open(filePath);
@@ -528,6 +533,12 @@ describe('SessionEventJournal', () => {
     healthy.append(healthy.nextSeq(), third);
     await healthy.close();
     const expected = await readFile(filePath);
+    expect(expected.toString('utf8').trimEnd().split('\n').map((line) => JSON.parse(line))).toEqual([
+      header,
+      { kind: 'event', seq: 1, envelope: first },
+      { kind: 'event', seq: 2, envelope: second },
+      { kind: 'event', seq: 3, envelope: third },
+    ]);
     const batchLength = Buffer.byteLength(JSON.stringify({ kind: 'event', seq: 2, envelope: second }) + '\n');
 
     for (let cut = 1; cut <= batchLength; cut++) {
@@ -535,15 +546,24 @@ describe('SessionEventJournal', () => {
       await writeFile(cutPath, initial);
       const j = await SessionEventJournal.open(cutPath);
       try {
+        fsMock.partialAppends = [];
         fsMock.appendPrefixBytes = cut;
         j.append(j.nextSeq(), second);
         j.append(j.nextSeq(), third);
         await j.flush();
         await j.close();
+        expect(fsMock.partialAppends, `byte boundary ${cut}`).toEqual([
+          { requested: batchLength, written: cut },
+        ]);
         expect(await readFile(cutPath), `byte boundary ${cut}`).toEqual(expected);
 
         const reopened = await SessionEventJournal.open(cutPath);
         try {
+          expect(await reopened.readSince(0, 10), `byte boundary ${cut}`).toEqual([
+            { seq: 1, envelope: first },
+            { seq: 2, envelope: second },
+            { seq: 3, envelope: third },
+          ]);
           expect((await reopened.readSince(1, 2)).map((entry) => entry.seq), `byte boundary ${cut}`).toEqual([2, 3]);
         } finally {
           await reopened.close();

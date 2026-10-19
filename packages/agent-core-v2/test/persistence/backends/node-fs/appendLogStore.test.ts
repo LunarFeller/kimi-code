@@ -823,6 +823,14 @@ describe('AppendLogStore', () => {
       });
     }
 
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    }
+
     it('retries a disk-full append after a backoff and persists buffered records exactly once', async () => {
       const failure = diskFull();
       let attempts = 0;
@@ -900,9 +908,11 @@ describe('AppendLogStore', () => {
     it('drops an ambiguously committed batch instead of duplicating it', async () => {
       const failure = diskFull();
       let attempts = 0;
+      const appends: { data: Uint8Array; durable?: boolean }[] = [];
       const originalAppend = storage.append.bind(storage);
       storage.append = async (scope, key, data, options) => {
         attempts++;
+        appends.push({ data: data.slice(), durable: options?.durable });
         if (attempts === 1) {
           await originalAppend(scope, key, data, options);
           throw failure;
@@ -926,8 +936,411 @@ describe('AppendLogStore', () => {
       await record.flush();
 
       expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
-      expect(attempts).toBe(1);
+      expect(attempts).toBe(2);
+      expect(appends.at(-1)).toEqual({ data: new Uint8Array(), durable: true });
     });
+
+    it.each(['retirement', 'close'] as const)(
+      '%s recovers an append that fails after shutdown starts',
+      async (shutdown) => {
+        const failure = diskFull();
+        const started = deferred<void>();
+        const gate = deferred<void>();
+        const reported = deferred<unknown>();
+        let attempts = 0;
+        const originalAppend = storage.append.bind(storage);
+        storage.append = async (...args) => {
+          attempts++;
+          if (attempts === 1) {
+            started.resolve();
+            await gate.promise;
+            throw failure;
+          }
+          return originalAppend(...args);
+        };
+
+        const owner = record.acquire(SCOPE, KEY);
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        await started.promise;
+        let finishing: Promise<unknown>;
+        if (shutdown === 'close') {
+          finishing = record.close().then(() => undefined, (error: unknown) => error);
+        } else {
+          owner.dispose();
+          finishing = record.drainRetirements();
+        }
+        gate.resolve();
+        expect(await reported.promise).toBe(failure);
+        expect(await finishing).toBeUndefined();
+
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(attempts).toBe(2);
+        owner.dispose();
+        await record.drainRetirements();
+      },
+    );
+
+    it.each(['retirement', 'close'] as const)(
+      '%s recovers records accepted before the first flush microtask starts',
+      async (shutdown) => {
+        const failure = diskFull();
+        const originalAppend = storage.append.bind(storage);
+        let attempts = 0;
+        storage.append = async (...args) => {
+          attempts++;
+          if (attempts === 1) throw failure;
+          return originalAppend(...args);
+        };
+        const owner = record.acquire(SCOPE, KEY);
+        record.append(SCOPE, KEY, { n: 1 });
+        record.append(SCOPE, KEY, { n: 2 });
+        if (shutdown === 'close') {
+          await record.close();
+        } else {
+          owner.dispose();
+          await record.drainRetirements();
+        }
+
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(attempts).toBe(2);
+        owner.dispose();
+        await record.drainRetirements();
+      },
+    );
+
+    it('close waits for a key first appended while another key is recovering', async () => {
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const recoveryStarted = deferred<void>();
+      const recoveryGate = deferred<void>();
+      const otherStarted = deferred<void>();
+      const otherGate = deferred<void>();
+      const otherKey = 'other.jsonl';
+      const originalAppend = storage.append.bind(storage);
+      let attempts = 0;
+      storage.append = async (scope, key, data, options) => {
+        if (key === KEY) {
+          attempts++;
+          if (attempts === 1) throw failure;
+          recoveryStarted.resolve();
+          await recoveryGate.promise;
+        } else if (key === otherKey) {
+          otherStarted.resolve();
+          await otherGate.promise;
+        }
+        return originalAppend(scope, key, data, options);
+      };
+
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      expect(await reported.promise).toBe(failure);
+      let closed = false;
+      const closing = record.close().then(() => {
+        closed = true;
+      });
+      await recoveryStarted.promise;
+      record.append(SCOPE, otherKey, { n: 2 });
+      await otherStarted.promise;
+      recoveryGate.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      try {
+        expect(closed).toBe(false);
+        expect(await storage.size(SCOPE, otherKey)).toBeUndefined();
+      } finally {
+        otherGate.resolve();
+        await closing;
+      }
+
+      expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }]);
+      expect(await collect<Rec>(SCOPE, otherKey)).toEqual([{ n: 2 }]);
+    });
+
+    it('completes a partial append using only its missing suffix', async () => {
+      const seed = enc.encode('{"n":0}\n');
+      await storage.append(SCOPE, KEY, seed);
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const originalRead = storage.read.bind(storage);
+      const reads = vi.spyOn(storage, 'read');
+      const writes = vi.spyOn(storage, 'write');
+      const originalAppend = storage.append.bind(storage);
+      const appended: Uint8Array[] = [];
+      storage.append = async (scope, key, data, options) => {
+        appended.push(data.slice());
+        if (appended.length === 1) {
+          await originalAppend(scope, key, data.subarray(0, 9), options);
+          throw failure;
+        }
+        return originalAppend(scope, key, data, options);
+      };
+
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      record.append(SCOPE, KEY, { n: 2 });
+      expect(await reported.promise).toBe(failure);
+      await vi.advanceTimersByTimeAsync(1000);
+      await record.flush();
+
+      expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 0 }, { n: 1 }, { n: 2 }]);
+      expect(new TextDecoder().decode(await originalRead(SCOPE, KEY))).toBe(
+        '{"n":0}\n{"n":1}\n{"n":2}\n',
+      );
+      expect(reads).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
+      expect(appended).toEqual([
+        enc.encode('{"n":1}\n{"n":2}\n'),
+        enc.encode('{"n":1}\n{"n":2}\n').subarray(9),
+      ]);
+    });
+
+    it('retains the original recovery boundary across repeated partial UTF-8 writes', async () => {
+      const seed = enc.encode('{"n":0}\n');
+      await storage.append(SCOPE, KEY, seed);
+      const records = [{ n: 1, text: '中文🙂' }, { n: 2, text: '界' }];
+      const batch = enc.encode(records.map((entry) => JSON.stringify(entry) + '\n').join(''));
+      const firstCut = enc.encode('{"n":1,"text":"').byteLength + 1;
+      const secondCut = 4;
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const originalRead = storage.read.bind(storage);
+      const reads = vi.spyOn(storage, 'read');
+      const writes = vi.spyOn(storage, 'write');
+      const originalAppend = storage.append.bind(storage);
+      const appended: Uint8Array[] = [];
+      storage.append = async (scope, key, data, options) => {
+        appended.push(data.slice());
+        if (appended.length <= 2) {
+          const cut = appended.length === 1 ? firstCut : secondCut;
+          await originalAppend(scope, key, data.subarray(0, cut), options);
+          throw failure;
+        }
+        return originalAppend(scope, key, data, options);
+      };
+
+      for (const entry of records) {
+        record.append(SCOPE, KEY, entry, { onError: reported.resolve });
+      }
+      expect(await reported.promise).toBe(failure);
+      await vi.advanceTimersByTimeAsync(1000);
+      await settle();
+      expect(await originalRead(SCOPE, KEY)).toEqual(
+        new Uint8Array([...seed, ...batch.subarray(0, firstCut + secondCut)]),
+      );
+      await vi.advanceTimersByTimeAsync(2000);
+      await record.flush();
+
+      expect(await collect(SCOPE, KEY)).toEqual([{ n: 0 }, ...records]);
+      expect(appended).toEqual([
+        batch,
+        batch.subarray(firstCut),
+        batch.subarray(firstCut + secondCut),
+      ]);
+      expect(reads).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
+    });
+
+    it('retries durability after a fully committed batch until the empty append succeeds', async () => {
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const originalAppend = storage.append.bind(storage);
+      const appends: { data: Uint8Array; durable?: boolean }[] = [];
+      storage.append = async (scope, key, data, options) => {
+        appends.push({ data: data.slice(), durable: options?.durable });
+        if (appends.length === 1) {
+          await originalAppend(scope, key, data, options);
+          throw failure;
+        }
+        if (appends.length === 2) throw failure;
+        return originalAppend(scope, key, data, options);
+      };
+      let recoveries = 0;
+      disposables.add(record.onDidRecover(() => {
+        recoveries++;
+      }));
+
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      record.append(SCOPE, KEY, { n: 2 });
+      expect(await reported.promise).toBe(failure);
+      await vi.advanceTimersByTimeAsync(1000);
+      await settle();
+      expect(recoveries).toBe(0);
+      await expect(record.flush()).rejects.toBe(failure);
+      await vi.advanceTimersByTimeAsync(2000);
+      await record.flush();
+
+      expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
+      expect(recoveries).toBe(1);
+      expect(appends).toEqual([
+        { data: enc.encode('{"n":1}\n{"n":2}\n'), durable: true },
+        { data: new Uint8Array(), durable: true },
+        { data: new Uint8Array(), durable: true },
+      ]);
+    });
+
+    it.each([
+      { phase: 'tail read', retire: false, recoveryFails: false },
+      { phase: 'tail read', retire: true, recoveryFails: false },
+      { phase: 'suffix append', retire: false, recoveryFails: false },
+      { phase: 'suffix append', retire: true, recoveryFails: false },
+      { phase: 'suffix append', retire: false, recoveryFails: true },
+      { phase: 'suffix append', retire: true, recoveryFails: true },
+    ])(
+      'rewrite during $phase preserves accepted records with retirement=$retire and recovery failure=$recoveryFails',
+      async ({ phase, retire, recoveryFails }) => {
+        await storage.append(SCOPE, KEY, enc.encode('{"n":0}\n'));
+        const failure = diskFull();
+        const reported = deferred<unknown>();
+        const recoveryStarted = deferred<void>();
+        const gate = deferred<void>();
+        const originalAppend = storage.append.bind(storage);
+        let attempts = 0;
+        storage.append = async (scope, key, data, options) => {
+          attempts++;
+          if (attempts === 1) {
+            const length = phase === 'tail read' ? data.byteLength : 9;
+            await originalAppend(scope, key, data.subarray(0, length), options);
+            throw failure;
+          }
+          if (attempts === 2 && phase === 'suffix append') {
+            recoveryStarted.resolve();
+            await gate.promise;
+            if (recoveryFails) {
+              await originalAppend(scope, key, data.subarray(0, 2), options);
+              throw failure;
+            }
+          }
+          return originalAppend(scope, key, data, options);
+        };
+        const originalReadStream = storage.readStream.bind(storage);
+        let readBlocked = false;
+        storage.readStream = async function* (scope, key, range) {
+          if (phase === 'tail read' && range !== undefined && !readBlocked) {
+            readBlocked = true;
+            recoveryStarted.resolve();
+            await gate.promise;
+          }
+          yield* originalReadStream(scope, key, range);
+        };
+
+        const owner = record.acquire(SCOPE, KEY);
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        await vi.advanceTimersByTimeAsync(1000);
+        await recoveryStarted.promise;
+
+        const rewriting = record.rewrite<Rec>(SCOPE, KEY, [{ n: 9 }]);
+        record.append(SCOPE, KEY, { n: 3 });
+        if (retire) owner.dispose();
+        gate.resolve();
+        await rewriting;
+        if (retire) await record.drainRetirements();
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([
+          { n: 9 }, { n: 1 }, { n: 2 }, { n: 3 },
+        ]);
+        expect(new TextDecoder().decode(await storage.read(SCOPE, KEY))).toBe(
+          '{"n":9}\n{"n":1}\n{"n":2}\n{"n":3}\n',
+        );
+        owner.dispose();
+        await record.drainRetirements();
+      },
+    );
+
+    it.each(['tail read', 'suffix append', 'partial suffix failure'] as const)(
+      'close and retirement wait for a running recovery during %s',
+      async (phase) => {
+        const failure = diskFull();
+        const reported = deferred<unknown>();
+        const recoveryStarted = deferred<void>();
+        const gate = deferred<void>();
+        let attempts = 0;
+        const originalAppend = storage.append.bind(storage);
+        storage.append = async (scope, key, data, options) => {
+          attempts++;
+          if (attempts === 1) {
+            const length = phase === 'tail read' ? data.byteLength : 9;
+            await originalAppend(scope, key, data.subarray(0, length), options);
+            throw failure;
+          }
+          if (attempts === 2 && phase !== 'tail read') {
+            recoveryStarted.resolve();
+            await gate.promise;
+            if (phase === 'partial suffix failure') {
+              await originalAppend(scope, key, data.subarray(0, 2), options);
+              throw failure;
+            }
+          }
+          return originalAppend(scope, key, data, options);
+        };
+        const originalReadStream = storage.readStream.bind(storage);
+        let blocked = false;
+        storage.readStream = async function* (scope, key, range) {
+          if (phase === 'tail read' && range !== undefined && !blocked) {
+            blocked = true;
+            recoveryStarted.resolve();
+            await gate.promise;
+          }
+          yield* originalReadStream(scope, key, range);
+        };
+
+        const owner = record.acquire(SCOPE, KEY);
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        await vi.advanceTimersByTimeAsync(1000);
+        await recoveryStarted.promise;
+        const closing = record.close();
+        owner.dispose();
+        let drained = false;
+        const retiring = record.drainRetirements().then(() => {
+          drained = true;
+        });
+        await settle();
+        expect(drained).toBe(false);
+        gate.resolve();
+        await Promise.all([closing, retiring]);
+
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(attempts).toBe(phase === 'partial suffix failure' ? 3 : 2);
+      },
+    );
+
+    it.each(['retirement', 'close'] as const)(
+      '%s makes only one final attempt when the disk remains full',
+      async (shutdown) => {
+        const failure = diskFull();
+        const started = deferred<void>();
+        const gate = deferred<void>();
+        const reported = deferred<unknown>();
+        let attempts = 0;
+        storage.append = async () => {
+          attempts++;
+          if (attempts === 1) {
+            started.resolve();
+            await gate.promise;
+          }
+          throw failure;
+        };
+        const owner = record.acquire(SCOPE, KEY);
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        await started.promise;
+        let finishing: Promise<unknown>;
+        if (shutdown === 'close') {
+          finishing = record.close().then(() => undefined, (error: unknown) => error);
+        } else {
+          owner.dispose();
+          finishing = record.drainRetirements();
+        }
+        gate.resolve();
+        expect(await reported.promise).toBe(failure);
+        expect(await finishing).toBe(shutdown === 'close' ? failure : undefined);
+        expect(attempts).toBe(2);
+        expect(await storage.size(SCOPE, KEY)).toBeUndefined();
+        owner.dispose();
+        await record.drainRetirements();
+      },
+    );
 
     it('stays sticky when the torn tail does not match the failed batch', async () => {
       const failure = diskFull();
@@ -950,8 +1363,12 @@ describe('AppendLogStore', () => {
       await vi.advanceTimersByTimeAsync(5000);
       await settle();
       expect(attempts).toBe(1);
-      await expect(record.flush()).rejects.toBe(failure);
-      await expect(collect<Rec>(SCOPE, KEY)).rejects.toBe(failure);
+      await expect(record.flush()).rejects.toMatchObject({
+        code: StorageErrors.codes.STORAGE_CORRUPTED,
+      });
+      await expect(collect<Rec>(SCOPE, KEY)).rejects.toMatchObject({
+        code: StorageErrors.codes.STORAGE_CORRUPTED,
+      });
 
       await record.rewrite<Rec>(SCOPE, KEY, [{ n: 9 }]);
       expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 9 }, { n: 1 }]);
@@ -1121,7 +1538,7 @@ describe('AppendLogStore', () => {
       expect(attempts).toBe(2);
     });
 
-    it('recovers a failed rewrite once the disk has space again', async () => {
+    it('keeps a failed rewrite sticky until the caller explicitly retries it', async () => {
       const failure = diskFull();
       record.append<Rec>(SCOPE, KEY, { n: 1 });
       await record.flush();
@@ -1133,17 +1550,111 @@ describe('AppendLogStore', () => {
         if (writeAttempts === 1) throw failure;
         return originalWrite(...args);
       };
-      const recovered = watchRecovery();
+      const recovered = vi.fn();
+      disposables.add(record.onDidRecover(recovered));
 
       await expect(record.rewrite<Rec>(SCOPE, KEY, [{ n: 9 }])).rejects.toBe(failure);
       await expect(record.flush()).rejects.toBe(failure);
 
-      await vi.advanceTimersByTimeAsync(1000);
-      await recovered;
-
+      await vi.advanceTimersByTimeAsync(60_000);
       record.append<Rec>(SCOPE, KEY, { n: 2 });
+      await expect(record.close()).rejects.toBe(failure);
+      expect(recovered).not.toHaveBeenCalled();
+      expect(writeAttempts).toBe(1);
+      expect(new TextDecoder().decode(await storage.read(SCOPE, KEY))).toBe('{"n":1}\n');
+
+      await record.rewrite<Rec>(SCOPE, KEY, [{ n: 9 }]);
+      expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 9 }, { n: 2 }]);
+    });
+
+    it.each([
+      { committed: 0, appendInFlight: false },
+      { committed: 9, appendInFlight: false },
+      { committed: 0, appendInFlight: true },
+      { committed: 9, appendInFlight: true },
+    ])(
+      'failed rewrite stays sticky after $committed bytes committed with append in flight=$appendInFlight',
+      async ({ committed, appendInFlight }) => {
+        await storage.append(SCOPE, KEY, enc.encode('{"n":1}\n'));
+        const failure = diskFull();
+        const reported = deferred<unknown>();
+        const started = deferred<void>();
+        const gate = deferred<void>();
+        const originalAppend = storage.append.bind(storage);
+        let appendAttempts = 0;
+        storage.append = async (scope, key, data, options) => {
+          appendAttempts++;
+          if (appendAttempts === 1) {
+            started.resolve();
+            await gate.promise;
+            await originalAppend(scope, key, data.subarray(0, committed), options);
+            throw failure;
+          }
+          return originalAppend(scope, key, data, options);
+        };
+        const originalWrite = storage.write.bind(storage);
+        let writeAttempts = 0;
+        storage.write = async (...args) => {
+          writeAttempts++;
+          if (writeAttempts === 1) throw failure;
+          return originalWrite(...args);
+        };
+        const recovered = vi.fn();
+        disposables.add(record.onDidRecover(recovered));
+
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        await started.promise;
+        const rewriting = appendInFlight
+          ? expect(record.rewrite(SCOPE, KEY, [{ n: 9 }])).rejects.toBe(failure)
+          : undefined;
+        gate.resolve();
+        expect(await reported.promise).toBe(failure);
+        if (rewriting === undefined) {
+          await expect(record.rewrite(SCOPE, KEY, [{ n: 9 }])).rejects.toBe(failure);
+        } else {
+          await rewriting;
+        }
+        await vi.advanceTimersByTimeAsync(60_000);
+        await expect(record.close()).rejects.toBe(failure);
+        expect(recovered).not.toHaveBeenCalled();
+        expect(appendAttempts).toBe(1);
+
+        await record.rewrite(SCOPE, KEY, [{ n: 9 }]);
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 9 }, { n: 1 }, { n: 2 }]);
+        expect(appendAttempts).toBe(2);
+      },
+    );
+
+    it('retries transient boundary-stat failures before attempting any append', async () => {
+      const failure = new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'transient stat failure');
+      const originalSize = storage.size.bind(storage);
+      let sizeAttempts = 0;
+      storage.size = async (...args) => {
+        sizeAttempts++;
+        if (sizeAttempts <= 2) throw failure;
+        return originalSize(...args);
+      };
+      const appended = vi.spyOn(storage, 'append');
+      const reported = deferred<unknown>();
+      const recovered = vi.fn();
+      disposables.add(record.onDidRecover(recovered));
+
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      record.append(SCOPE, KEY, { n: 2 });
+      expect(await reported.promise).toBe(failure);
+      expect(appended).not.toHaveBeenCalled();
+      await expect(record.flush()).rejects.toBe(failure);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sizeAttempts).toBe(2);
+      expect(appended).not.toHaveBeenCalled();
+      expect(recovered).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2000);
       await record.flush();
+
       expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }, { n: 2 }]);
+      expect(appended).toHaveBeenCalledTimes(1);
+      expect(recovered).toHaveBeenCalledTimes(1);
     });
 
     it('becomes sticky when a recovery attempt hits a non-retryable error', async () => {

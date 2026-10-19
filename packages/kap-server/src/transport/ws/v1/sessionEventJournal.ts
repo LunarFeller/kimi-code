@@ -156,6 +156,7 @@ export class SessionEventJournal {
 
   async close(): Promise<void> {
     this.closed = true;
+    await this.flushPromise;
     await this.flush();
   }
 
@@ -239,24 +240,30 @@ export class SessionEventJournal {
       restoreAll();
       return;
     }
-    let committedText: string;
+    let committed: Buffer;
     try {
-      committedText = await readRange(this.filePath, sizeBefore, sizeAfter - 1);
+      committed = await readRange(this.filePath, sizeBefore, sizeAfter - 1);
     } catch {
       restoreAll();
       return;
     }
-    if (!batchText.startsWith(committedText)) {
+    const batch = Buffer.from(batchText, 'utf8');
+    if (
+      committed.byteLength !== sizeAfter - sizeBefore ||
+      !batch.subarray(0, committed.byteLength).equals(committed)
+    ) {
       restoreAll();
       return;
     }
     let completeLines = 0;
-    for (let i = 0; i < committedText.length; i++) {
-      if (committedText[i] === '\n') completeLines++;
+    for (let i = batchText.startsWith('\n') ? 1 : 0; i < committed.byteLength; i++) {
+      if (committed[i] === 0x0a) completeLines++;
     }
-    if (!committedText.endsWith('\n')) this.repairNewline = true;
+    this.repairNewline = committed[committed.byteLength - 1] !== 0x0a;
     if (headerIncluded && completeLines > 0) this.headerPending = false;
-    this.pendingLines = lines.slice(completeLines).concat(this.pendingLines);
+    this.pendingLines = lines
+      .slice(headerIncluded ? Math.max(1, completeLines) : completeLines)
+      .concat(this.pendingLines);
   }
 }
 
@@ -290,13 +297,13 @@ function parseJournalLine(raw: string): JournalHeaderLine | JournalEventLine | u
   return undefined;
 }
 
-async function readRange(filePath: string, start: number, end: number): Promise<string> {
-  let out = '';
-  const stream = createReadStream(filePath, { encoding: 'utf8', start, end });
+async function readRange(filePath: string, start: number, end: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  const stream = createReadStream(filePath, { start, end });
   for await (const chunk of stream) {
-    out += chunk;
+    chunks.push(chunk as Buffer);
   }
-  return out;
+  return Buffer.concat(chunks);
 }
 
 async function* readLines(filePath: string): AsyncIterable<string> {

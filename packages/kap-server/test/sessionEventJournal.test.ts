@@ -4,10 +4,19 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  type EventEnvelope,
+  SessionEventJournal,
+} from '../src/transport/ws/v1/sessionEventJournal';
+
 const fsMock = vi.hoisted(() => ({
   appendFailures: 0,
   appendPrefixLines: 0,
   appendPrefixBytes: 0,
+  appendPrefixes: [] as number[],
+  appendCalls: 0,
+  appendGate: undefined as Promise<void> | undefined,
+  appendStarted: undefined as (() => void) | undefined,
 }));
 
 vi.mock('node:fs/promises', async (importActual) => {
@@ -20,6 +29,19 @@ vi.mock('node:fs/promises', async (importActual) => {
   return {
     ...actual,
     appendFile: async (...args: Parameters<typeof actual.appendFile>) => {
+      fsMock.appendCalls++;
+      if (fsMock.appendGate !== undefined) {
+        const gate = fsMock.appendGate;
+        fsMock.appendGate = undefined;
+        fsMock.appendStarted?.();
+        await gate;
+      }
+      const prefixBytes = fsMock.appendPrefixes.shift() ?? fsMock.appendPrefixBytes;
+      if (prefixBytes > 0) {
+        fsMock.appendPrefixBytes = 0;
+        await actual.appendFile(args[0], Buffer.from(String(args[1]), 'utf8').subarray(0, prefixBytes));
+        throw enospc();
+      }
       if (fsMock.appendPrefixLines > 0) {
         const count = fsMock.appendPrefixLines;
         fsMock.appendPrefixLines = 0;
@@ -31,12 +53,6 @@ vi.mock('node:fs/promises', async (importActual) => {
         await actual.appendFile(args[0], prefix, args[2]);
         throw enospc();
       }
-      if (fsMock.appendPrefixBytes > 0) {
-        const count = fsMock.appendPrefixBytes;
-        fsMock.appendPrefixBytes = 0;
-        await actual.appendFile(args[0], String(args[1]).slice(0, count), args[2]);
-        throw enospc();
-      }
       if (fsMock.appendFailures > 0) {
         fsMock.appendFailures--;
         throw enospc();
@@ -45,11 +61,6 @@ vi.mock('node:fs/promises', async (importActual) => {
     },
   };
 });
-
-import {
-  type EventEnvelope,
-  SessionEventJournal,
-} from '../src/transport/ws/v1/sessionEventJournal';
 
 function envelope(seq: number): EventEnvelope {
   return {
@@ -65,6 +76,13 @@ describe('SessionEventJournal', () => {
   let filePath: string;
 
   beforeEach(async () => {
+    fsMock.appendFailures = 0;
+    fsMock.appendPrefixLines = 0;
+    fsMock.appendPrefixBytes = 0;
+    fsMock.appendPrefixes = [];
+    fsMock.appendCalls = 0;
+    fsMock.appendGate = undefined;
+    fsMock.appendStarted = undefined;
     dir = await mkdtemp(join(tmpdir(), 'kimi-journal-test-'));
     filePath = join(dir, 'sess_1.jsonl');
   });
@@ -272,5 +290,88 @@ describe('SessionEventJournal', () => {
     } finally {
       await j.close();
     }
+  });
+
+  it('keeps the event pending when a repeated failure commits only the repair delimiter', async () => {
+    const j = await SessionEventJournal.open(filePath);
+    try {
+      j.append(j.nextSeq(), envelope(1));
+      await j.flush();
+      fsMock.appendPrefixes = [10, 1];
+      j.append(j.nextSeq(), envelope(2));
+      await j.flush();
+      await j.flush();
+      await j.flush();
+
+      expect((await j.readSince(0, 100)).map((entry) => entry.seq)).toEqual([1, 2]);
+    } finally {
+      await j.close();
+    }
+  });
+
+  it('reconciles a partial write ending inside a multibyte UTF-8 character', async () => {
+    const j = await SessionEventJournal.open(filePath);
+    try {
+      j.append(j.nextSeq(), envelope(1));
+      await j.flush();
+      const event = { ...envelope(2), payload: { text: '你好' } };
+      const bytes = Buffer.from(JSON.stringify({ kind: 'event', seq: 2, envelope: event }), 'utf8');
+      fsMock.appendPrefixBytes = bytes.indexOf(Buffer.from('你', 'utf8')) + 1;
+      j.append(j.nextSeq(), event);
+      await j.flush();
+      await j.flush();
+
+      const entries = await j.readSince(0, 100);
+      expect(entries.map((entry) => entry.seq)).toEqual([1, 2]);
+      expect(entries[1]?.envelope.payload).toEqual({ text: '你好' });
+    } finally {
+      await j.close();
+    }
+  });
+
+  it('does not queue the incomplete header as an event when retrying its torn write', async () => {
+    const j = await SessionEventJournal.open(filePath);
+    try {
+      fsMock.appendPrefixBytes = 10;
+      j.append(j.nextSeq(), envelope(1));
+      await j.flush();
+      await j.flush();
+
+      const parsed = (await readFile(filePath, 'utf8')).trim().split('\n').flatMap((line) => {
+        try {
+          return [JSON.parse(line) as { kind: string }];
+        } catch {
+          return [];
+        }
+      });
+      expect(parsed.filter((line) => line.kind === 'journal_header')).toHaveLength(1);
+      expect((await j.readSince(0, 100)).map((entry) => entry.seq)).toEqual([1]);
+    } finally {
+      await j.close();
+    }
+  });
+
+  it('close retries the buffered events after an in-flight append fails', async () => {
+    const j = await SessionEventJournal.open(filePath);
+    j.append(j.nextSeq(), envelope(1));
+    await j.flush();
+    const callsBefore = fsMock.appendCalls;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let release!: () => void;
+    fsMock.appendGate = new Promise<void>((resolve) => { release = resolve; });
+    fsMock.appendStarted = markStarted;
+    fsMock.appendFailures = 1;
+    j.append(j.nextSeq(), envelope(2));
+    await started;
+    const closing = j.close();
+    release();
+    await closing;
+
+    expect(fsMock.appendCalls - callsBefore).toBe(2);
+    const reopened = await SessionEventJournal.open(filePath);
+    expect(reopened.seq).toBe(2);
+    expect((await reopened.readSince(0, 100)).map((entry) => entry.seq)).toEqual([1, 2]);
+    await reopened.close();
   });
 });

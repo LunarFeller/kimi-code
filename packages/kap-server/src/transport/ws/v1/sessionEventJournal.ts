@@ -31,6 +31,12 @@ interface JournalEventLine {
   envelope: EventEnvelope;
 }
 
+interface JournalAppendBatch {
+  readonly bytes: Buffer;
+  readonly headerIncluded: boolean;
+  startOffset?: number;
+}
+
 export interface JournalEntry {
   seq: number;
   envelope: EventEnvelope;
@@ -49,7 +55,7 @@ export class SessionEventJournal {
   private flushPromise: Promise<void> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private consecutiveFailures = 0;
-  private repairNewline = false;
+  private pendingBatch: JournalAppendBatch | undefined;
   private headerPending: boolean;
   private closed = false;
 
@@ -141,16 +147,15 @@ export class SessionEventJournal {
     for (;;) {
       let inFlight = this.flushPromise;
       if (inFlight === undefined) {
-        if (this.pendingLines.length === 0) return;
+        if (this.pendingBatch === undefined && this.pendingLines.length === 0) return;
         this.scheduleFlush();
         inFlight = this.flushPromise;
         if (inFlight === undefined) return;
       }
-      const failuresBefore = this.consecutiveFailures;
       await inFlight;
       if (this.flushPromise !== undefined) continue;
-      if (this.pendingLines.length === 0) return;
-      if (this.consecutiveFailures !== failuresBefore) return;
+      if (this.pendingBatch === undefined && this.pendingLines.length === 0) return;
+      if (this.consecutiveFailures > 0) return;
     }
   }
 
@@ -164,7 +169,7 @@ export class SessionEventJournal {
     if (this.flushPromise !== undefined || this.retryTimer !== undefined) return;
     this.flushPromise = this.flushOnce().finally(() => {
       this.flushPromise = undefined;
-      if (this.pendingLines.length === 0) return;
+      if (this.pendingBatch === undefined && this.pendingLines.length === 0) return;
       if (this.closed) return;
       if (this.consecutiveFailures === 0) {
         this.scheduleFlush();
@@ -183,35 +188,41 @@ export class SessionEventJournal {
   }
 
   private async flushOnce(): Promise<void> {
-    const lines: string[] = [];
-    const headerIncluded = this.headerPending;
-    if (headerIncluded) {
-      const header: JournalHeaderLine = {
-        kind: 'journal_header',
-        version: JOURNAL_VERSION,
-        epoch: this.epoch,
-        created_at: Date.now(),
+    let batch = this.pendingBatch;
+    if (batch === undefined) {
+      if (this.pendingLines.length === 0) return;
+      const lines: string[] = [];
+      if (this.headerPending) {
+        const header: JournalHeaderLine = {
+          kind: 'journal_header',
+          version: JOURNAL_VERSION,
+          epoch: this.epoch,
+          created_at: Date.now(),
+        };
+        lines.push(JSON.stringify(header));
+      }
+      lines.push(...this.pendingLines);
+      this.pendingLines = [];
+      batch = {
+        bytes: Buffer.from(lines.join('\n') + '\n', 'utf8'),
+        headerIncluded: this.headerPending,
       };
-      lines.push(JSON.stringify(header));
+      this.pendingBatch = batch;
     }
-    lines.push(...this.pendingLines);
-    this.pendingLines = [];
-    if (lines.length === 0) return;
-    const batchText = (this.repairNewline ? '\n' : '') + lines.join('\n') + '\n';
-    let sizeBefore = 0;
     try {
       await mkdir(dirname(this.filePath), { recursive: true });
-      try {
-        sizeBefore = (await stat(this.filePath)).size;
-      } catch {
-        sizeBefore = 0;
+      const committedBytes = await this.readCommittedBytes(batch);
+      if (committedBytes < batch.bytes.byteLength) {
+        try {
+          await appendFile(this.filePath, batch.bytes.subarray(committedBytes));
+        } catch (error) {
+          if ((await this.readCommittedBytes(batch)) !== batch.bytes.byteLength) throw error;
+        }
       }
-      await appendFile(this.filePath, batchText, 'utf8');
-      if (headerIncluded) this.headerPending = false;
-      this.repairNewline = false;
+      if (batch.headerIncluded) this.headerPending = false;
+      this.pendingBatch = undefined;
       this.consecutiveFailures = 0;
     } catch (error) {
-      await this.restoreUncommittedLines(lines, headerIncluded, batchText, sizeBefore);
       this.consecutiveFailures++;
       this.logger.warn(
         { filePath: this.filePath, err: String(error) },
@@ -220,50 +231,29 @@ export class SessionEventJournal {
     }
   }
 
-  private async restoreUncommittedLines(
-    lines: readonly string[],
-    headerIncluded: boolean,
-    batchText: string,
-    sizeBefore: number,
-  ): Promise<void> {
-    const restoreAll = (): void => {
-      this.pendingLines = (headerIncluded ? lines.slice(1) : [...lines]).concat(this.pendingLines);
-    };
-    let sizeAfter: number;
+  private async readCommittedBytes(batch: JournalAppendBatch): Promise<number> {
+    let size: number;
     try {
-      sizeAfter = (await stat(this.filePath)).size;
-    } catch {
-      restoreAll();
-      return;
+      size = (await stat(this.filePath)).size;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      size = 0;
     }
-    if (sizeAfter <= sizeBefore) {
-      restoreAll();
-      return;
+    batch.startOffset ??= size;
+    const committedBytes = size - batch.startOffset;
+    if (committedBytes < 0 || committedBytes > batch.bytes.byteLength) {
+      throw new Error('event journal size changed outside the pending append');
     }
-    let committed: Buffer;
-    try {
-      committed = await readRange(this.filePath, sizeBefore, sizeAfter - 1);
-    } catch {
-      restoreAll();
-      return;
+    if (committedBytes > 0) {
+      const committed = await readRange(this.filePath, batch.startOffset, size - 1);
+      if (
+        committed.byteLength !== committedBytes ||
+        !batch.bytes.subarray(0, committedBytes).equals(committed)
+      ) {
+        throw new Error('event journal pending append prefix does not match');
+      }
     }
-    const batch = Buffer.from(batchText, 'utf8');
-    if (
-      committed.byteLength !== sizeAfter - sizeBefore ||
-      !batch.subarray(0, committed.byteLength).equals(committed)
-    ) {
-      restoreAll();
-      return;
-    }
-    let completeLines = 0;
-    for (let i = batchText.startsWith('\n') ? 1 : 0; i < committed.byteLength; i++) {
-      if (committed[i] === 0x0a) completeLines++;
-    }
-    this.repairNewline = committed[committed.byteLength - 1] !== 0x0a;
-    if (headerIncluded && completeLines > 0) this.headerPending = false;
-    this.pendingLines = lines
-      .slice(headerIncluded ? Math.max(1, completeLines) : completeLines)
-      .concat(this.pendingLines);
+    return committedBytes;
   }
 }
 

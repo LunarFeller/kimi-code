@@ -61,8 +61,10 @@ interface LogState {
   cutoverEpoch: number;
   refCount: number;
   retired: boolean;
+  closeSettled: boolean;
   ready: Promise<void>;
   retirement: Promise<void> | undefined;
+  settlementPromise: Promise<void> | undefined;
   onError?: (error: unknown) => void;
 }
 
@@ -70,6 +72,9 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   declare readonly _serviceBrand: undefined;
 
   private readonly logs = new Map<string, LogState>();
+  private recoveryStopped = false;
+  private disposed = false;
+  private closingPromise: Promise<void> | undefined;
   private readonly writeEmitter = this._register(new Emitter<AppendLogWrite>());
   readonly onDidWrite: Event<AppendLogWrite> = this.writeEmitter.event;
   private readonly recoverEmitter = this._register(new Emitter<AppendLogWrite>());
@@ -77,17 +82,22 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
 
   constructor(@IFileSystemStorageService private readonly storage: IFileSystemStorageService) {
     super();
-    this._register(
-      toDisposable(() => {
-        for (const state of this.logs.values()) {
-          if (state.recovery?.timer !== undefined) clearTimeout(state.recovery.timer);
-        }
-      }),
-    );
+  }
+
+  override dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.recoveryStopped = true;
+    super.dispose();
+    for (const [id, state] of this.logs) {
+      const { scope, key } = fromLogId(id);
+      this.retire(scope, key, state);
+    }
   }
 
   append<R>(scope: string, key: string, record: R, options?: AppendLogOptions): void {
     const state = this.state(scope, key);
+    state.closeSettled = false;
     state.pending.push(record);
     if (options?.onError !== undefined && state.onError === undefined) {
       state.onError = options.onError;
@@ -158,6 +168,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   ): Promise<void> {
     const encoded = encodeBatch(records);
     const state = this.state(scope, key);
+    state.closeSettled = false;
     state.cutoverEpoch++;
     this.cancelRecovery(state);
     const prior = state.flushPromise ?? state.ready;
@@ -165,21 +176,26 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       () => undefined,
       () => undefined,
     );
+    let handledWriteFailure = false;
     const rewrite = priorSettled.then(async () => {
       try {
         await this.storage.write(scope, key, encoded, { atomic: true });
         state.storageFailure = undefined;
         return true;
       } catch (error) {
+        state.storageFailure = { error };
         if (options?.onError !== undefined) {
           options.onError(error);
-          return false;
+          handledWriteFailure = true;
         }
-        state.storageFailure = { error };
         throw error;
       }
     });
-    await this.ownFlush(scope, key, state, rewrite, { value: false });
+    try {
+      await this.ownFlush(scope, key, state, rewrite, { value: false });
+    } catch (error) {
+      if (!handledWriteFailure) throw error;
+    }
   }
 
   async flush(): Promise<void> {
@@ -193,16 +209,41 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     }
   }
 
-  async close(): Promise<void> {
-    const settled = await Promise.allSettled([...this.logs].map(([id, state]) => {
-      const { scope, key } = fromLogId(id);
-      return this.settleLog(scope, key, state);
-    }));
-    await this.flush().catch((error: unknown) => {
-      settled.push({ status: 'rejected', reason: error });
+  close(): Promise<void> {
+    this.recoveryStopped = true;
+    if (this.closingPromise !== undefined) return this.closingPromise;
+    const closing = this.settleLogs().finally(() => {
+      if (this.closingPromise === closing) this.closingPromise = undefined;
     });
-    for (const result of settled) {
-      if (result.status === 'rejected') throw result.reason;
+    this.closingPromise = closing;
+    return closing;
+  }
+
+  private async settleLogs(): Promise<void> {
+    const seen = new Set<LogState>();
+    const failures = new Map<LogState, unknown>();
+    while (true) {
+      const work = [...this.logs].filter(([, state]) =>
+        !seen.has(state) ||
+        state.flushPromise !== undefined ||
+        state.recoveryPromise !== undefined ||
+        (state.storageFailure === undefined && state.pending.length > 0),
+      );
+      if (work.length === 0) break;
+      await Promise.all(work.map(async ([id, state]) => {
+        seen.add(state);
+        const { scope, key } = fromLogId(id);
+        try {
+          await this.settleLog(scope, key, state);
+          failures.delete(state);
+        } catch (error) {
+          failures.set(state, error);
+        }
+      }));
+    }
+    for (const state of this.logs.values()) state.closeSettled = true;
+    for (const error of failures.values()) {
+      throw error;
     }
   }
 
@@ -219,6 +260,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   }
 
   private state(scope: string, key: string): LogState {
+    if (this.disposed) throw new Error('Append log store is disposed');
     const id = logId(scope, key);
     let state = this.logs.get(id);
     if (state === undefined || state.retired) {
@@ -233,8 +275,10 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         cutoverEpoch: 0,
         refCount: 0,
         retired: false,
+        closeSettled: false,
         ready,
         retirement: undefined,
+        settlementPromise: undefined,
       };
       this.logs.set(id, state);
     }
@@ -242,11 +286,16 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   }
 
   private scheduleFlush(scope: string, key: string, state: LogState): void {
+    if (this.disposed || state.retired) return;
     if (state.flushScheduled || state.flushPromise !== undefined) return;
     if (state.storageFailure !== undefined) return;
     state.flushScheduled = true;
     queueMicrotask(() => {
       state.flushScheduled = false;
+      if (this.disposed || state.retired) {
+        void state.flushPromise?.catch((error) => state.onError?.(error));
+        return;
+      }
       void this.flushState(scope, key, state).catch((error) => state.onError?.(error));
     });
   }
@@ -266,6 +315,11 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   private release(scope: string, key: string, state: LogState): void {
     state.refCount--;
     if (state.refCount > 0) return;
+    this.retire(scope, key, state);
+  }
+
+  private retire(scope: string, key: string, state: LogState): void {
+    if (state.retired) return;
     state.retired = true;
     const retirement = this.settleRetiredState(scope, key, state).catch(() => undefined);
     state.retirement = retirement;
@@ -275,14 +329,30 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
 
   private async settleRetiredState(scope: string, key: string, state: LogState): Promise<void> {
     try {
-      await this.settleLog(scope, key, state);
+      if (
+        !state.closeSettled ||
+        state.flushPromise !== undefined ||
+        state.recoveryPromise !== undefined ||
+        state.settlementPromise !== undefined
+      ) {
+        await this.settleLog(scope, key, state);
+      }
     } finally {
       const id = logId(scope, key);
       if (this.logs.get(id) === state) this.logs.delete(id);
     }
   }
 
-  private async settleLog(scope: string, key: string, state: LogState): Promise<void> {
+  private settleLog(scope: string, key: string, state: LogState): Promise<void> {
+    if (state.settlementPromise !== undefined) return state.settlementPromise;
+    const settlement = this.finishSettlement(scope, key, state).finally(() => {
+      if (state.settlementPromise === settlement) state.settlementPromise = undefined;
+    });
+    state.settlementPromise = settlement;
+    return settlement;
+  }
+
+  private async finishSettlement(scope: string, key: string, state: LogState): Promise<void> {
     if (state.recovery?.timer !== undefined) clearTimeout(state.recovery.timer);
     if (state.recovery !== undefined) state.recovery.timer = undefined;
     await this.flushState(scope, key, state).catch(() => undefined);
@@ -304,10 +374,11 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
 
   private scheduleRecovery(scope: string, key: string, state: LogState): void {
     const recovery = state.recovery;
-    if (recovery === undefined || state.retired || recovery.timer !== undefined) return;
+    if (this.recoveryStopped || recovery === undefined || state.retired || recovery.timer !== undefined) return;
     const delay = Math.min(RECOVERY_BASE_DELAY_MS * 2 ** recovery.attempts, RECOVERY_MAX_DELAY_MS);
     recovery.timer = setTimeout(() => {
       recovery.timer = undefined;
+      if (this.recoveryStopped || state.retired) return;
       void this.attemptRecovery(scope, key, state);
     }, delay);
     recovery.timer.unref();
@@ -382,6 +453,13 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     const boundary = failure.failedAtSize;
     const size = await this.storage.size(scope, key);
     if (state.cutoverEpoch !== epoch) return false;
+    if ((size ?? 0) < boundary) {
+      throw new StorageError(
+        StorageErrors.codes.STORAGE_CORRUPTED,
+        'append-log recovery aborted: log shrank while reconciling',
+        { details: { scope, key } },
+      );
+    }
     if (size === undefined || size === boundary) {
       if (size !== undefined && size > 0) {
         let lastByte = 0;
@@ -400,13 +478,6 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         }
       }
       return false;
-    }
-    if (size < boundary) {
-      throw new StorageError(
-        StorageErrors.codes.STORAGE_CORRUPTED,
-        'append-log recovery aborted: log shrank while reconciling',
-        { details: { scope, key } },
-      );
     }
     const committed = size - boundary;
     if (committed > encoded.byteLength) {

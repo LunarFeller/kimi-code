@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { pino } from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  IAppendLogStore,
   IBootstrapService,
   IFileSystemStorageService,
   IHostRequestHeaders,
@@ -15,6 +16,8 @@ import {
   IOAuthToolkit,
   ITelemetryService,
   noopTelemetryService,
+  StorageError,
+  StorageErrors,
 } from '@moonshot-ai/agent-core-v2';
 
 import { listLiveServerInstances } from '../src/instanceRegistry';
@@ -233,6 +236,99 @@ describe('server-v2 boot', () => {
     expect(() => core.accessor.get(IBootstrapService)).toThrow();
     expect(await listLiveServerInstances(home)).toEqual([]);
   });
+
+  it.each(['successful', 'persistently failing'] as const)(
+    'waits for unowned session-index recovery before close allows home removal with %s storage',
+    async (outcome) => {
+      home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-recovery-close-'));
+      server = await startServer({
+        hostIdentity: TEST_HOST_IDENTITY,
+        host: '127.0.0.1',
+        port: 0,
+        homeDir: home,
+        logLevel: 'silent',
+      });
+      const logs = server.core.accessor.get(IAppendLogStore);
+      const storage = server.core.accessor.get(IFileSystemStorageService);
+      const append = storage.append.bind(storage);
+      const diskFull = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'disk full');
+      let markRecoveryStarted!: () => void;
+      const recoveryStarted = new Promise<void>((resolve) => {
+        markRecoveryStarted = resolve;
+      });
+      let releaseRecovery!: () => void;
+      const recoveryGate = new Promise<void>((resolve) => {
+        releaseRecovery = resolve;
+      });
+      let markDrainStarted!: () => void;
+      const drainStarted = new Promise<void>((resolve) => {
+        markDrainStarted = resolve;
+      });
+      const persistentlyFailing = outcome === 'persistently failing';
+      let attempts = 0;
+      let recoveryAppend: Promise<void> | undefined;
+      const appendSpy = vi.spyOn(storage, 'append').mockImplementation(async (scope, key, data, options) => {
+        if (scope === '' && key === 'session_index.jsonl') {
+          attempts++;
+          if (attempts === 1) {
+            await append(scope, key, data.subarray(0, 5), options);
+            throw diskFull;
+          }
+          if (attempts === 2) {
+            markRecoveryStarted();
+            recoveryAppend = recoveryGate.then(async () => {
+              if (persistentlyFailing) throw diskFull;
+              await append(scope, key, data, options);
+            });
+            await recoveryAppend;
+            return;
+          }
+          if (persistentlyFailing) throw diskFull;
+        }
+        await append(scope, key, data, options);
+      });
+      const drainRetirements = logs.drainRetirements.bind(logs);
+      const drainSpy = vi.spyOn(logs, 'drainRetirements').mockImplementation(() => {
+        markDrainStarted();
+        return drainRetirements();
+      });
+      let closing: Promise<void> | undefined;
+      let closed = false;
+
+      try {
+        logs.append('', 'session_index.jsonl', { sessionId: 'example-session', deleted: true });
+        await expect(logs.flushLog('', 'session_index.jsonl')).rejects.toBe(diskFull);
+        await recoveryStarted;
+        closing = server.close().then(() => {
+          closed = true;
+        });
+        await drainStarted;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(closed).toBe(false);
+
+        releaseRecovery();
+        await closing;
+        server = undefined;
+        const record = '{"sessionId":"example-session","deleted":true}\n';
+        expect(await readFile(join(home, 'session_index.jsonl'), 'utf8')).toBe(
+          persistentlyFailing ? record.slice(0, 5) : record,
+        );
+        const expectedAttempts = persistentlyFailing ? 3 : 2;
+        expect(attempts).toBe(expectedAttempts);
+        await rm(home, { recursive: true, force: true });
+        await new Promise((resolve) => setTimeout(resolve, 2_100));
+        await expect(stat(home)).rejects.toHaveProperty('code', 'ENOENT');
+        expect(attempts).toBe(expectedAttempts);
+      } finally {
+        releaseRecovery();
+        await closing;
+        await recoveryAppend?.catch(() => undefined);
+        if (closed) server = undefined;
+        appendSpy.mockRestore();
+        drainSpy.mockRestore();
+      }
+    },
+  );
 
   it('logs process-level exceptions without exiting and removes the handlers on close', async () => {
     home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-'));

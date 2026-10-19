@@ -206,11 +206,8 @@ export async function runAcpServerWithStream(
       await core.accessor.get(ISessionIndexMirror).drain();
       await acpProviderRegistration.dispose();
       core.dispose();
-      // `core.dispose()` runs the mirror's and the query store's synchronous
-      // `dispose()`, whose drains/closes are asynchronous — await them so an
-      // embedding host that removes homeDir right after close() never races
-      // an in-flight shard close (ENOTEMPTY on teardown). The same window
-      // exists for the append-log retirement flushes released by disposal.
+      await core.instantiation.disposeAsync();
+      // Service disposal registers background storage work before it is drained.
       await appendLogStore.drainRetirements();
       await drainSessionIndexMirror();
       await drainQueryStoreDisposals();

@@ -174,6 +174,7 @@ import {
   IFlagService,
   IHostEnvironment,
   IHostFileSystem,
+  ILogService,
   IMcpManagementService,
   IMcpOAuthService,
   IModelService,
@@ -522,6 +523,17 @@ export class SDKRpcClientV2 extends SDKRpcClientBase {
       subscription.dispose();
     }
     await this.klient.close();
+    const sessionManager = this.app.accessor.get(ISessionManager);
+    await Promise.all(sessionManager.list().map(async (session) => {
+      try {
+        await sessionManager.close(session.id);
+      } catch (error) {
+        this.app.accessor.get(ILogService).warn('session close failed; continuing shutdown', {
+          sessionId: session.id,
+          error,
+        });
+      }
+    }));
     // Same shutdown order as kap-server: drain the session-index mirror while
     // the query store is still open, then await the asynchronous closes that
     // disposal fires — a host that removes homeDir right after close() must

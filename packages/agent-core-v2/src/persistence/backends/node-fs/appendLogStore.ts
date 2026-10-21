@@ -1,8 +1,11 @@
+import { createHash, type Hash } from 'node:crypto';
+
 import { Disposable, toDisposable, type IDisposable } from '#/_base/di/lifecycle';
 import { ILogService } from '#/_base/log/log';
 import { LifecycleScope } from '#/app/scopes';
 import { ScopeActivation, registerScopedService } from '#/_base/di/scope';
 import { Emitter, type Event } from '#/_base/event';
+import { ISessionLockService } from '#/persistence/interface/sessionLock';
 
 import {
   IFileSystemStorageService,
@@ -26,11 +29,13 @@ const NEWLINE = 0x0a;
 
 interface RecoveryState {
   readonly failure:
-    | { readonly kind: 'beforeAppend' }
+    | { readonly kind: 'beforeAppend'; readonly failedAtSize: number | undefined }
     | {
         readonly kind: 'append';
-        readonly failedBatch: readonly unknown[];
+        readonly encoded: Uint8Array;
+        readonly recordCount: number;
         readonly failedAtSize: number;
+        readonly knownAtSize: number | undefined;
       };
   attempts: number;
   timer: ReturnType<typeof setTimeout> | undefined;
@@ -59,13 +64,15 @@ interface LogState {
   flushScheduled: boolean;
   storageFailure: { readonly error: unknown } | undefined;
   recovery: RecoveryState | undefined;
+  recoveryPrefix: { readonly length: number; readonly hash: Hash } | undefined;
   recoveryPromise: Promise<void> | undefined;
   failureWarned: boolean;
   stuckWatch: NodeJS.Timeout | undefined;
   cutoverEpoch: number;
   refCount: number;
   retired: boolean;
-  retirementGuard: (() => boolean) | undefined;
+  retirementGuard: (() => boolean | IDisposable) | undefined;
+  writeLease: IDisposable | undefined;
   closeSettled: boolean;
   ready: Promise<void>;
   retirement: Promise<void> | undefined;
@@ -87,8 +94,9 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   private readonly logs = new Map<string, LogState>();
   private recoveryStopped = false;
   private disposed = false;
+  private disposalPromise: Promise<void> | undefined;
   private closingPromise: Promise<void> | undefined;
-  private readonly writeGuards = new Map<string, () => boolean>();
+  private readonly writeGuards = new Map<string, () => boolean | IDisposable>();
   private readonly writeEmitter = this._register(new Emitter<AppendLogWrite>());
   readonly onDidWrite: Event<AppendLogWrite> = this.writeEmitter.event;
   private readonly recoverEmitter = this._register(new Emitter<AppendLogWrite>());
@@ -97,12 +105,14 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   constructor(
     @IFileSystemStorageService private readonly storage: IFileSystemStorageService,
     @ILogService private readonly logger: ILogService,
+    @ISessionLockService _sessionLockLifetime: ISessionLockService,
   ) {
     super();
   }
 
-  override dispose(): void {
-    if (this.disposed) return;
+  // oxlint-disable-next-line typescript-eslint/no-misused-promises
+  override dispose(): Promise<void> {
+    if (this.disposed) return this.disposalPromise ?? Promise.resolve();
     this.disposed = true;
     this.recoveryStopped = true;
     super.dispose();
@@ -110,6 +120,8 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       const { scope, key } = fromLogId(id);
       this.retire(scope, key, state);
     }
+    this.disposalPromise = this.drainRetirements();
+    return this.disposalPromise;
   }
 
   append<R>(scope: string, key: string, record: R, options?: AppendLogOptions): void {
@@ -215,6 +227,13 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     let handledWriteFailure = false;
     const rewrite = priorSettled.then(async () => {
       try {
+        if (!this.writeAllowed(scope, key, state)) {
+          throw new StorageError(
+            StorageErrors.codes.STORAGE_LOCKED,
+            'append-log rewrite deferred: write guard declined',
+            { details: { scope, key } },
+          );
+        }
         state.inFlightBytes = 0;
         state.rewriteInFlight = encoded.length;
         await this.storage.write(scope, key, encoded, { atomic: true });
@@ -309,7 +328,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     return disk < known || disk > known + (state?.inFlightBytes ?? 0);
   }
 
-  bindWriteGuard(scope: string, key: string, guard: () => boolean): IDisposable {
+  bindWriteGuard(scope: string, key: string, guard: () => boolean | IDisposable): IDisposable {
     const id = logId(scope, key);
     this.writeGuards.set(id, guard);
     return toDisposable(() => {
@@ -318,8 +337,11 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   }
 
   private writeAllowed(scope: string, key: string, state: LogState): boolean {
+    if (state.writeLease !== undefined) return true;
     const guard = state.retired ? state.retirementGuard : this.writeGuards.get(logId(scope, key));
-    if (guard === undefined || guard()) {
+    const allowed = guard?.() ?? true;
+    if (allowed !== false) {
+      if (allowed !== true) state.writeLease = allowed;
       state.guardWarned = false;
       return true;
     }
@@ -351,6 +373,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         flushScheduled: false,
         storageFailure: undefined,
         recovery: undefined,
+        recoveryPrefix: undefined,
         recoveryPromise: undefined,
         failureWarned: false,
         stuckWatch: undefined,
@@ -358,6 +381,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         refCount: 0,
         retired: false,
         retirementGuard: undefined,
+        writeLease: undefined,
         closeSettled: false,
         ready,
         retirement: undefined,
@@ -463,6 +487,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
   private cancelRecovery(state: LogState): void {
     if (state.recovery?.timer !== undefined) clearTimeout(state.recovery.timer);
     state.recovery = undefined;
+    state.recoveryPrefix = undefined;
   }
 
   private scheduleRecovery(scope: string, key: string, state: LogState): void {
@@ -491,14 +516,16 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     if (recovery === undefined) return;
     const epoch = state.cutoverEpoch;
     state.recovery = undefined;
+    let guardDeclined = false;
     try {
       if (state.flushPromise !== undefined) {
         await state.flushPromise.catch(() => undefined);
       }
       if (state.cutoverEpoch !== epoch) return;
-      if (state.storageFailure === undefined) return;
+      const storageFailure = state.storageFailure;
+      if (storageFailure === undefined) return;
       if (state.recovery !== undefined) return;
-      if (state.flushPromise !== undefined || !this.writeAllowed(scope, key, state)) {
+      if (state.flushPromise !== undefined) {
         state.recovery = recovery;
         this.scheduleRecovery(scope, key, state);
         return;
@@ -507,13 +534,22 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         scope,
         key,
         state,
-        this.reconcileCommittedTail(scope, key, state, recovery),
+        Promise.resolve().then(() => {
+          if (state.cutoverEpoch !== epoch) return false;
+          const allowed = this.writeAllowed(scope, key, state);
+          if (state.cutoverEpoch !== epoch) return false;
+          if (!allowed) {
+            guardDeclined = true;
+            throw storageFailure.error;
+          }
+          return this.reconcileCommittedTail(scope, key, state, recovery);
+        }),
         { value: false },
       );
       if (state.cutoverEpoch !== epoch) return;
       if (state.pending.length > 0) {
         state.recovery = {
-          failure: { kind: 'beforeAppend' },
+          failure: { kind: 'beforeAppend', failedAtSize: state.recoveryPrefix?.length ?? state.knownLength },
           attempts: recovery.attempts,
           timer: undefined,
         };
@@ -521,10 +557,16 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         return;
       }
       state.storageFailure = undefined;
+      state.recoveryPrefix = undefined;
       this.recoverEmitter.fire({ scope, key });
       if (state.pending.length > 0) this.scheduleFlush(scope, key, state);
     } catch (error) {
       if (state.cutoverEpoch !== epoch) return;
+      if (guardDeclined) {
+        state.recovery = recovery;
+        this.scheduleRecovery(scope, key, state);
+        return;
+      }
       state.storageFailure = { error };
       if (state.recovery !== undefined) {
         state.recovery.attempts = recovery.attempts + 1;
@@ -548,10 +590,42 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     recovery: RecoveryState,
   ): Promise<boolean> {
     const failure = recovery.failure;
-    if (failure.kind === 'beforeAppend') return false;
-    const encoded = encodeBatch(failure.failedBatch);
-    if (encoded.byteLength === 0) return false;
     const epoch = state.cutoverEpoch;
+    const guard = state.retired ? state.retirementGuard : this.writeGuards.get(logId(scope, key));
+    const prefix = state.recoveryPrefix;
+    if (guard !== undefined) {
+      if (prefix === undefined || prefix.length !== failure.failedAtSize) {
+        throw new StorageError(
+          StorageErrors.codes.STORAGE_CORRUPTED,
+          'append-log recovery aborted: guarded log has no trusted original prefix',
+          { details: { scope, key } },
+        );
+      }
+      const current = await this.hashPrefix(scope, key, prefix.length);
+      if (state.cutoverEpoch !== epoch) return false;
+      if (current.copy().digest('hex') !== prefix.hash.copy().digest('hex')) {
+        throw new StorageError(
+          StorageErrors.codes.STORAGE_CORRUPTED,
+          'append-log recovery aborted: original prefix was modified',
+          { details: { scope, key } },
+        );
+      }
+    }
+    if (failure.kind === 'beforeAppend') {
+      if (guard === undefined) return false;
+      const size = await this.storage.size(scope, key);
+      if (state.cutoverEpoch !== epoch) return false;
+      if (failure.failedAtSize === undefined || (size ?? 0) !== failure.failedAtSize) {
+        throw new StorageError(
+          StorageErrors.codes.STORAGE_CORRUPTED,
+          'append-log recovery aborted: guarded log has no unchanged confirmed boundary',
+          { details: { scope, key } },
+        );
+      }
+      return false;
+    }
+    const encoded = failure.encoded;
+    if (encoded.byteLength === 0) return false;
     const boundary = failure.failedAtSize;
     const size = await this.storage.size(scope, key);
     if (state.cutoverEpoch !== epoch) return false;
@@ -579,9 +653,8 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
           );
         }
       }
-      return false;
     }
-    const committed = size - boundary;
+    const committed = (size ?? 0) - boundary;
     if (committed > encoded.byteLength) {
       throw new StorageError(
         StorageErrors.codes.STORAGE_CORRUPTED,
@@ -591,12 +664,14 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     }
     const tail = new Uint8Array(committed);
     let offset = 0;
-    for await (const chunk of this.storage.readStream(scope, key, {
-      start: boundary,
-      end: size - 1,
-    })) {
-      tail.set(chunk.subarray(0, Math.min(chunk.byteLength, committed - offset)), offset);
-      offset += chunk.byteLength;
+    if (committed > 0) {
+      for await (const chunk of this.storage.readStream(scope, key, {
+        start: boundary,
+        end: boundary + committed - 1,
+      })) {
+        tail.set(chunk.subarray(0, Math.min(chunk.byteLength, committed - offset)), offset);
+        offset += chunk.byteLength;
+      }
     }
     if (state.cutoverEpoch !== epoch) return false;
     if (offset !== committed || !bytesEqual(tail, encoded.subarray(0, committed))) {
@@ -606,7 +681,9 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         { details: { scope, key } },
       );
     }
-    if (!this.writeAllowed(scope, key, state)) {
+    const allowed = this.writeAllowed(scope, key, state);
+    if (state.cutoverEpoch !== epoch) return false;
+    if (!allowed) {
       throw new StorageError(
         StorageErrors.codes.STORAGE_LOCKED,
         'append-log recovery deferred: write guard declined',
@@ -621,7 +698,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       if (state.cutoverEpoch === epoch && state.knownLength !== undefined) {
         const sizeAfter = this.diskLength(scope, key);
         if (sizeAfter !== undefined) {
-          state.knownLength += Math.min(remaining.byteLength, Math.max(0, sizeAfter - size));
+          state.knownLength += Math.min(remaining.byteLength, Math.max(0, sizeAfter - (size ?? 0)));
         }
       }
       throw error;
@@ -629,10 +706,38 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       state.inFlightBytes = 0;
     }
     if (state.cutoverEpoch === epoch) {
-      if (state.knownLength !== undefined) state.knownLength += remaining.byteLength;
-      state.pending.splice(0, failure.failedBatch.length);
+      if (prefix !== undefined) {
+        state.recoveryPrefix = {
+          length: prefix.length + encoded.byteLength,
+          hash: prefix.hash.copy().update(encoded),
+        };
+      }
+      state.knownLength = failure.knownAtSize === undefined
+        ? undefined
+        : failure.knownAtSize + encoded.byteLength;
+      state.pending.splice(0, failure.recordCount);
     }
     return true;
+  }
+
+  private async hashPrefix(scope: string, key: string, length: number): Promise<Hash> {
+    const hash = createHash('sha256');
+    let read = 0;
+    if (length > 0) {
+      for await (const chunk of this.storage.readStream(scope, key, { start: 0, end: length - 1 })) {
+        read += chunk.byteLength;
+        if (read > length) break;
+        hash.update(chunk);
+      }
+    }
+    if (read !== length) {
+      throw new StorageError(
+        StorageErrors.codes.STORAGE_CORRUPTED,
+        'append-log recovery aborted: original prefix length could not be verified',
+        { details: { scope, key } },
+      );
+    }
+    return hash;
   }
 
   private ownFlush(
@@ -690,6 +795,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       if (state.flushPromise === owned) {
         while (state.flushPromise === owned && state.pending.length > 0) {
           if (!this.writeAllowed(scope, key, state)) break;
+          if (state.flushPromise !== owned) break;
           await this.drain(scope, key, state, wroteBox);
         }
       }
@@ -703,6 +809,9 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
           clearInterval(state.stuckWatch);
           state.stuckWatch = undefined;
         }
+        const lease = state.writeLease;
+        state.writeLease = undefined;
+        lease?.dispose();
       }
     }
     if (wroteBox.value) this.writeEmitter.fire({ scope, key });
@@ -723,18 +832,34 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     while (state.pending.length > 0) {
       const batch = state.pending.slice();
       const encoded = encodeBatch(batch);
-      let failure: RecoveryState['failure'] = { kind: 'beforeAppend' };
+      let failure: RecoveryState['failure'] = {
+        kind: 'beforeAppend',
+        failedAtSize: state.recoveryPrefix?.length ?? state.knownLength,
+      };
       try {
         const sizeBefore = await this.storage.size(scope, key);
         if (state.cutoverEpoch !== cutoverEpoch) return wrote;
         if (!this.writeAllowed(scope, key, state)) return wrote;
-        failure = { kind: 'append', failedBatch: batch, failedAtSize: sizeBefore ?? 0 };
+        if (state.cutoverEpoch !== cutoverEpoch) return wrote;
+        failure = {
+          kind: 'append',
+          encoded,
+          recordCount: batch.length,
+          failedAtSize: sizeBefore ?? 0,
+          knownAtSize: state.knownLength,
+        };
         state.inFlightBytes = encoded.length;
         await this.storage.append(scope, key, encoded, { durable: true });
         state.inFlightBytes = 0;
         wrote = true;
         if (state.cutoverEpoch === cutoverEpoch && state.knownLength !== undefined) {
           state.knownLength += encoded.length;
+        }
+        if (state.cutoverEpoch === cutoverEpoch && state.recoveryPrefix !== undefined) {
+          state.recoveryPrefix = {
+            length: state.recoveryPrefix.length + encoded.byteLength,
+            hash: state.recoveryPrefix.hash.copy().update(encoded),
+          };
         }
         if (wroteBox !== undefined) wroteBox.value = true;
       } catch (error) {
@@ -752,6 +877,17 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
           state.recovery === undefined &&
           isRecoverableStorageError(error)
         ) {
+          state.recoveryPrefix = undefined;
+          const guard = state.retired ? state.retirementGuard : this.writeGuards.get(logId(scope, key));
+          if (guard !== undefined && failure.failedAtSize !== undefined) {
+            try {
+              const hash = await this.hashPrefix(scope, key, failure.failedAtSize);
+              if (state.cutoverEpoch === cutoverEpoch) {
+                state.recoveryPrefix = { length: failure.failedAtSize, hash };
+              }
+            } catch {}
+          }
+          if (state.cutoverEpoch !== cutoverEpoch) throw error;
           state.recovery = {
             failure,
             attempts: 0,

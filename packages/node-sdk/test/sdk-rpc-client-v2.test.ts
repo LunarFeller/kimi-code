@@ -55,18 +55,24 @@ import {
   IAgentToolRegistryService,
   INotifyUserTool,
   IAtomicDocumentStore,
+  IFileSystemStorageService,
   ISessionContext,
   IAgentTowerService,
   IHostRequestHeaders,
   IMcpManagementService,
   IMcpOAuthService,
   ISessionManager,
+  IWireService,
   MAIN_AGENT_ID,
   OsProcessErrors,
 } from '@moonshot-ai/agent-core-v2';
 
 import { McpOAuthService as McpOAuthServiceV2 } from '@moonshot-ai/agent-core-v2/mcpCore/oauth/service';
 import { TowerStore } from '@moonshot-ai/agent-core-v2/features/tower/protocol/store';
+import {
+  resetUnexpectedErrorHandler,
+  setUnexpectedErrorHandler,
+} from '@moonshot-ai/agent-core-v2/_base/errors/unexpectedError';
 
 import { TEST_IDENTITY } from './test-identity';
 import {
@@ -456,6 +462,73 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
       expect(handler).toHaveBeenCalledTimes(2);
     } finally {
       await client.close();
+    }
+  });
+
+  it('close() waits for accepted wire records whose asynchronous dehydration is still running', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-'));
+    const workDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-work-'));
+    tempDirs.push(homeDir, workDir);
+    const client = new SDKRpcClientV2({ homeDir, identity: TEST_IDENTITY });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let closing: Promise<void> | undefined;
+    let wire: IWireService | undefined;
+    let restoreAppend = () => {};
+    const unexpected: unknown[] = [];
+    try {
+      await client.createSession({ id: 'ses_shutdown_dehydrate', workDir });
+      const session = getLiveSessionById(client.engineAccessor, 'ses_shutdown_dehydrate')!;
+      const agents = session.accessor.get(IAgentLifecycleService);
+      if (agents.handleOf(MAIN_AGENT_ID) === undefined) {
+        await agents.create({ agentId: MAIN_AGENT_ID });
+      }
+      wire = agents.handleOf(MAIN_AGENT_ID)!.accessor.get(IWireService);
+      await wire.flush();
+      const wirePath = wire.journalPath()!;
+      const appended = vi.spyOn(client.engineAccessor.get(IFileSystemStorageService), 'append');
+      restoreAppend = () => { appended.mockRestore(); };
+      setUnexpectedErrorHandler((error) => unexpected.push(error));
+      wire.appendRecord({ type: 'test.shutdown.marker' }, async (record) => {
+        markStarted();
+        await gate;
+        return { ...record, marker: 'dehydrated-before-close' };
+      });
+      await started;
+      let closed = false;
+      let writesAtClose = 0;
+      closing = client.close().then(() => {
+        closed = true;
+        writesAtClose = appended.mock.calls.length;
+      });
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect.soft(closed).toBe(false);
+      release();
+      await closing;
+      await wire.drainPersisted();
+
+      const bytes = await readFile(wirePath, 'utf8');
+      const records = bytes.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+      expect.soft(records.filter((record) => record.type === 'test.shutdown.marker')).toEqual([{
+        type: 'test.shutdown.marker',
+        marker: 'dehydrated-before-close',
+      }]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(appended).toHaveBeenCalledTimes(writesAtClose);
+      expect(await readFile(wirePath, 'utf8')).toBe(bytes);
+      expect(unexpected).toEqual([]);
+    } finally {
+      release();
+      try {
+        if (closing !== undefined) await closing;
+        else await client.close();
+        await wire?.drainPersisted();
+      } finally {
+        restoreAppend();
+        resetUnexpectedErrorHandler();
+      }
     }
   });
 

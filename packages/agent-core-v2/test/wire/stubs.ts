@@ -118,9 +118,8 @@ export function registerTestAgentWire(
   if (previousContext !== undefined) {
     ix.set(ISessionContext, previousContext as ISessionContext);
   }
-  const previousLocks = ix.set(ISessionLockService, new InMemorySessionLockService());
-  if (previousLocks !== undefined) {
-    ix.set(ISessionLockService, previousLocks as ISessionLockService);
+  if (ix.get(ISessionLockService) === undefined) {
+    ix.set(ISessionLockService, new InMemorySessionLockService());
   }
   ix.set(IWireService, new SyncDescriptor(WireService));
   const eventBus = ix.get(IEventBus);

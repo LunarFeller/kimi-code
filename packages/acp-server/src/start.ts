@@ -27,8 +27,10 @@ import {
   IAppendLogStore,
   IHostEnvironment,
   IHostProcessService,
+  ILogService,
   ISessionContext,
   ISessionIndexMirror,
+  ISessionManager,
   IWorkspaceInstanceManager,
   logSeed,
   resolveConfigPath,
@@ -190,6 +192,17 @@ export async function runAcpServerWithStream(
       // Detach the klient's event subscriptions first so disposal below cannot
       // deliver into a torn-down scope.
       await klient.close();
+      const sessionManager = core.accessor.get(ISessionManager);
+      await Promise.all(sessionManager.list().map(async (session) => {
+        try {
+          await sessionManager.close(session.id);
+        } catch (error) {
+          core.accessor.get(ILogService).warn('session close failed; continuing shutdown', {
+            sessionId: session.id,
+            error,
+          });
+        }
+      }));
       // Flush the append-log write-behind before disposing, so a clean shutdown
       // never races a pending drain against teardown (and doesn't drop the last
       // persisted ops). Best-effort: a flush failure must not block disposal.

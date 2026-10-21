@@ -346,6 +346,14 @@ export async function startServer(opts: ServerStartOptions): Promise<RunningServ
     authFailureLimiter?.dispose();
     modelCatalogRefreshScheduler.dispose();
     await sessionIdleReaper.close();
+    const sessionManager = core.accessor.get(ISessionManager);
+    await Promise.all(sessionManager.list().map(async (session) => {
+      try {
+        await sessionManager.close(session.id);
+      } catch (error) {
+        logger.warn({ err: error, sessionId: session.id }, 'session close failed; continuing shutdown');
+      }
+    }));
     try {
       await shutdownServerTelemetry(telemetry);
     } catch (error) {

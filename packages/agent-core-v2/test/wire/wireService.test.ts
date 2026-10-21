@@ -8,15 +8,17 @@ import { ILogService } from '#/_base/log/log';
 import { IAgentBlobService } from '#/agent/blob/agentBlobService';
 import { ITelemetryService, noopTelemetryService } from '#/app/telemetry/telemetry';
 import type { ContentPart } from '#human/llm/message';
+import { InMemorySessionLockService } from '#/persistence/backends/memory/sessionLockService';
 import { AppendLogStore } from '#/persistence/backends/node-fs/appendLogStore';
 import { InMemoryStorageService } from '#/persistence/backends/memory/inMemoryStorageService';
 import { IAppendLogStore } from '#/persistence/interface/appendLogStore';
-import { ISessionLockService } from '#/persistence/interface/sessionLock';
+import { ISessionLockService, sessionOccupiedError } from '#/persistence/interface/sessionLock';
 import { IFileSystemStorageService, StorageError, StorageErrors } from '#/persistence/interface/storage';
 import { WIRE_PROTOCOL_VERSION } from '#/wire/migration/migration';
 import { wireJournalBackupKey } from '#/wire/repair';
 import { WireError, WireErrors } from '#/wire/errors';
 import { IWireService } from '#/wire/wire';
+import type { WireService } from '#/wire/wireService';
 import { AGENT_WIRE_RECORD_KEY, type WireRecord } from '#/wire/record';
 
 import { recordingWireLog, registerTestAgentWire, testWireScope, noopLogger } from './stubs';
@@ -35,6 +37,8 @@ beforeEach(() => {
   ix = disposables.add(new TestInstantiationService());
   storage = new InMemoryStorageService();
   ix.stub(IFileSystemStorageService, storage);
+  ix.stub(ILogService, noopLogger);
+  ix.stub(ISessionLockService, new InMemorySessionLockService());
   ix.set(IAppendLogStore, new SyncDescriptor(AppendLogStore));
   log = ix.get(IAppendLogStore);
   wire = registerTestAgentWire(ix, testWireScope(SCOPE, KEY), {
@@ -104,6 +108,86 @@ describe('WireService seal', () => {
 });
 
 describe('WireService appendRecord', () => {
+  it('releases the write guard if acquiring the append log fails during construction', () => {
+    const targetIx = disposables.add(new TestInstantiationService());
+    const disposeGuard = vi.fn();
+    const failure = new Error('append log acquisition failed');
+    const binding = vi.spyOn(log, 'bindWriteGuard').mockReturnValueOnce({ dispose: disposeGuard });
+    const acquire = vi.spyOn(log, 'acquire').mockImplementationOnce(() => {
+      throw failure;
+    });
+    try {
+      expect(() => registerTestAgentWire(targetIx, 'wire/failed-construction', {
+        log,
+        storage,
+        logger: noopLogger,
+        telemetry: noopTelemetryService,
+      })).toThrow(failure);
+      expect(disposeGuard).toHaveBeenCalledOnce();
+    } finally {
+      binding.mockRestore();
+      acquire.mockRestore();
+    }
+  });
+
+  it('keeps its write guard through retirement when disposed with a partial append', async () => {
+    vi.useFakeTimers();
+    const scope = 'wire/guarded-retirement';
+    const targetIx = disposables.add(new TestInstantiationService());
+    const target = registerTestAgentWire(targetIx, scope, {
+      log,
+      storage,
+      logger: noopLogger,
+      telemetry: noopTelemetryService,
+    }) as WireService;
+    const locks = targetIx.get(ISessionLockService);
+    let acquired = true;
+    const lease = locks.lease.bind(locks);
+    locks.lease = vi.fn((sessionId) => {
+      if (!acquired) throw sessionOccupiedError(sessionId);
+      return lease(sessionId);
+    });
+    const failure = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'no space left');
+    const unexpected: unknown[] = [];
+    setUnexpectedErrorHandler((error) => unexpected.push(error));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const originalAppend = storage.append.bind(storage);
+      let attempts = 0;
+      storage.append = async (appendScope, key, data, options) => {
+        attempts++;
+        if (attempts === 1) {
+          await originalAppend(appendScope, key, data.subarray(0, 7), options);
+          throw failure;
+        }
+        return originalAppend(appendScope, key, data, options);
+      };
+      const recovered = vi.fn();
+      disposables.add(log.onDidRecover(recovered));
+      target.appendRecord({ type: 'wire.test.first', text: '中文', time: 1 });
+      target.appendRecord({ type: 'wire.test.second', time: 2 });
+      await expect(target.flush()).rejects.toBe(failure);
+      expect(unexpected).toEqual([failure]);
+      const partial = await storage.read(scope, AGENT_WIRE_RECORD_KEY);
+      expect(partial).toHaveLength(7);
+
+      acquired = false;
+      target.dispose();
+      await log.drainRetirements();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect.soft(attempts).toBe(1);
+      expect.soft(recovered).not.toHaveBeenCalled();
+      expect(await storage.read(scope, AGENT_WIRE_RECORD_KEY)).toEqual(partial);
+    } finally {
+      resetUnexpectedErrorHandler();
+      targetIx.dispose();
+      await log.drainRetirements();
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('retains a partial append while the session is occupied and reports its later recovery', async () => {
     vi.useFakeTimers();
     const scope = 'wire/guarded-recovery';
@@ -117,7 +201,11 @@ describe('WireService appendRecord', () => {
     });
     const locks = targetIx.get(ISessionLockService);
     let acquired = true;
-    locks.tryHold = vi.fn(() => acquired);
+    const lease = locks.lease.bind(locks);
+    locks.lease = vi.fn((sessionId) => {
+      if (!acquired) throw sessionOccupiedError(sessionId);
+      return lease(sessionId);
+    });
     const failure = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'no space left');
     const unexpected: unknown[] = [];
     setUnexpectedErrorHandler((error) => unexpected.push(error));
@@ -156,7 +244,7 @@ describe('WireService appendRecord', () => {
       expect(new TextDecoder().decode(await storage.read(scope, AGENT_WIRE_RECORD_KEY))).toBe(
         [first, second, third].map((record) => JSON.stringify(record) + '\n').join(''),
       );
-      expect(locks.tryHold).toHaveBeenCalledWith('test-session');
+      expect(locks.lease).toHaveBeenCalledWith('test-session');
       expect(info).toHaveBeenCalledExactlyOnceWith(
         'session wire persistence recovered after storage failure',
         { scope },

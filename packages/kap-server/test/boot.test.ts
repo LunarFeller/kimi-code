@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,15 +9,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   IAppendLogStore,
+  IAgentLifecycleService,
   IBootstrapService,
   IFileSystemStorageService,
   IHostRequestHeaders,
+  ISessionLockService,
+  ISessionManager,
+  IWireService,
   InMemoryStorageService,
   IOAuthToolkit,
   ITelemetryService,
   noopTelemetryService,
   StorageError,
   StorageErrors,
+  type SessionLockService,
 } from '@moonshot-ai/agent-core-v2';
 
 import { listLiveServerInstances } from '../src/instanceRegistry';
@@ -152,6 +157,21 @@ describe('server-v2 boot', () => {
     });
     const overridden = server.core.accessor.get(IHostRequestHeaders);
     expect(overridden.headers['User-Agent']).toBe('custom-host/9.9');
+  });
+
+  it('rejects invalid idle reclaim config before registering an instance', async () => {
+    home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-idle-reclaim-'));
+    await expect(
+      startServer({
+        hostIdentity: TEST_HOST_IDENTITY,
+        host: '127.0.0.1',
+        port: 0,
+        homeDir: home,
+        logLevel: 'silent',
+        env: { KIMI_CODE_SESSION_IDLE_RECLAIM_MS: 'nope' },
+      }),
+    ).rejects.toThrow(/KIMI_CODE_SESSION_IDLE_RECLAIM_MS.*non-negative integer/);
+    expect(await listLiveServerInstances(home)).toEqual([]);
   });
 
   it('seeds explicit skill dirs into the core scope when skillDirs is provided', async () => {
@@ -329,6 +349,97 @@ describe('server-v2 boot', () => {
       }
     },
   );
+
+  it('finishes partial wire recovery before releasing session locks on shutdown', async () => {
+    home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-wire-lock-close-'));
+    server = await startServer({
+      hostIdentity: TEST_HOST_IDENTITY,
+      host: '127.0.0.1',
+      port: 0,
+      homeDir: home,
+      logLevel: 'silent',
+    });
+    const session = await server.core.accessor.get(ISessionManager).create({ workDir: home });
+    const agents = session.accessor.get(IAgentLifecycleService);
+    await agents.create({ agentId: 'main' });
+    const wire = agents.handleOf('main')!.accessor.get(IWireService);
+    await server.core.accessor.get(IAppendLogStore).flush();
+    const path = wire.journalPath()!;
+    const baseline = await readFile(path);
+    const storage = server.core.accessor.get(IFileSystemStorageService);
+    const locks = server.core.accessor.get(ISessionLockService) as SessionLockService;
+    const append = storage.append.bind(storage);
+    const disposeLock = locks.dispose.bind(locks);
+    const tryHold = locks.tryHold.bind(locks);
+    let lockDisposed = false;
+    let callsAfterDispose = 0;
+    const disposeSpy = vi.spyOn(locks, 'dispose').mockImplementation(() => {
+      lockDisposed = true;
+      disposeLock();
+    });
+    const holdSpy = vi.spyOn(locks, 'tryHold').mockImplementation((sessionId) => {
+      if (lockDisposed) callsAfterDispose++;
+      return tryHold(sessionId);
+    });
+    const diskFull = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'disk full');
+    let markRecoveryStarted!: () => void;
+    const recoveryStarted = new Promise<void>((resolve) => {
+      markRecoveryStarted = resolve;
+    });
+    let releaseRecovery!: () => void;
+    const recoveryGate = new Promise<void>((resolve) => {
+      releaseRecovery = resolve;
+    });
+    let attempts = 0;
+    const appendSpy = vi.spyOn(storage, 'append').mockImplementation(async (scope, key, data, options) => {
+      if (key === 'wire.jsonl') {
+        attempts++;
+        if (attempts === 1) {
+          await append(scope, key, data.subarray(0, 7), options);
+          throw diskFull;
+        }
+        if (attempts === 2) {
+          markRecoveryStarted();
+          await recoveryGate;
+        }
+      }
+      await append(scope, key, data, options);
+    });
+    let closing: Promise<void> | undefined;
+    let closed = false;
+    try {
+      const first = { type: 'wire.test.shutdown', text: '中文', time: 1 };
+      const second = { type: 'wire.test.after.failure', time: 2 };
+      wire.appendRecord(first);
+      await expect(wire.flush()).rejects.toBe(diskFull);
+      wire.appendRecord(second);
+      expect(locks.held(session.id)).toBe(true);
+      closing = server.close().then(() => {
+        closed = true;
+      });
+      await recoveryStarted;
+      expect(closed).toBe(false);
+      releaseRecovery();
+      await closing;
+      server = undefined;
+
+      expect(await readFile(path)).toEqual(Buffer.concat([
+        baseline,
+        Buffer.from([first, second].map((record) => JSON.stringify(record) + '\n').join('')),
+      ]));
+      expect(lockDisposed).toBe(true);
+      expect(callsAfterDispose).toBe(0);
+      expect(locks.held(session.id)).toBe(false);
+      expect(await readdir(join(home, 'locks', 'sessions'))).toEqual([]);
+    } finally {
+      releaseRecovery();
+      await closing;
+      if (closed) server = undefined;
+      appendSpy.mockRestore();
+      holdSpy.mockRestore();
+      disposeSpy.mockRestore();
+    }
+  });
 
   it('logs process-level exceptions without exiting and removes the handlers on close', async () => {
     home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-'));

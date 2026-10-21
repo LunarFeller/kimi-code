@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DisposableStore } from '#/_base/di/lifecycle';
 import { SyncDescriptor } from '#/_base/di/descriptors';
@@ -11,6 +11,7 @@ import type { ContentPart } from '#human/llm/message';
 import { AppendLogStore } from '#/persistence/backends/node-fs/appendLogStore';
 import { InMemoryStorageService } from '#/persistence/backends/memory/inMemoryStorageService';
 import { IAppendLogStore } from '#/persistence/interface/appendLogStore';
+import { ISessionLockService } from '#/persistence/interface/sessionLock';
 import { IFileSystemStorageService, StorageError, StorageErrors } from '#/persistence/interface/storage';
 import { WIRE_PROTOCOL_VERSION } from '#/wire/migration/migration';
 import { wireJournalBackupKey } from '#/wire/repair';
@@ -72,7 +73,7 @@ function wireOverLog(
   dependencies: { blob?: IAgentBlobService; storage?: IFileSystemStorageService; telemetry?: ITelemetryService } = {},
 ): IWireService {
   const stubIx = disposables.add(new TestInstantiationService());
-  return registerTestAgentWire(stubIx, testWireScope(SCOPE, key), { log: stubLog, ...dependencies });
+  return registerTestAgentWire(stubIx, testWireScope(SCOPE, key), { log: stubLog, logger: noopLogger, ...dependencies });
 }
 
 describe('WireService seal', () => {
@@ -103,6 +104,71 @@ describe('WireService seal', () => {
 });
 
 describe('WireService appendRecord', () => {
+  it('retains a partial append while the session is occupied and reports its later recovery', async () => {
+    vi.useFakeTimers();
+    const scope = 'wire/guarded-recovery';
+    const targetIx = disposables.add(new TestInstantiationService());
+    const info = vi.fn();
+    const target = registerTestAgentWire(targetIx, scope, {
+      log,
+      storage,
+      logger: { ...noopLogger, info },
+      telemetry: noopTelemetryService,
+    });
+    const locks = targetIx.get(ISessionLockService);
+    let acquired = true;
+    locks.tryHold = vi.fn(() => acquired);
+    const failure = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'no space left');
+    const unexpected: unknown[] = [];
+    setUnexpectedErrorHandler((error) => unexpected.push(error));
+    try {
+      const originalAppend = storage.append.bind(storage);
+      let attempts = 0;
+      storage.append = async (appendScope, key, data, options) => {
+        attempts++;
+        if (attempts === 1) {
+          await originalAppend(appendScope, key, data.subarray(0, 7), options);
+          throw failure;
+        }
+        return originalAppend(appendScope, key, data, options);
+      };
+      const first = { type: 'wire.test.first', text: '中文', time: 1 };
+      const second = { type: 'wire.test.second', time: 2 };
+      target.appendRecord(first);
+      target.appendRecord(second);
+      await expect(target.flush()).rejects.toBe(failure);
+      expect(unexpected).toEqual([failure]);
+      const partial = await storage.read(scope, AGENT_WIRE_RECORD_KEY);
+      expect(partial).toHaveLength(7);
+
+      acquired = false;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(1);
+      expect(await storage.read(scope, AGENT_WIRE_RECORD_KEY)).toEqual(partial);
+      expect(info).not.toHaveBeenCalled();
+
+      acquired = true;
+      await vi.advanceTimersByTimeAsync(2000);
+      await target.flush();
+      const third = { type: 'wire.test.third', time: 3 };
+      target.appendRecord(third);
+      await target.flush();
+      expect(new TextDecoder().decode(await storage.read(scope, AGENT_WIRE_RECORD_KEY))).toBe(
+        [first, second, third].map((record) => JSON.stringify(record) + '\n').join(''),
+      );
+      expect(locks.tryHold).toHaveBeenCalledWith('test-session');
+      expect(info).toHaveBeenCalledExactlyOnceWith(
+        'session wire persistence recovered after storage failure',
+        { scope },
+      );
+    } finally {
+      resetUnexpectedErrorHandler();
+      targetIx.dispose();
+      await log.drainRetirements();
+      vi.useRealTimers();
+    }
+  });
+
   it('appends flat records without a dehydrator', async () => {
     wire.appendRecord({ type: 'wire.test.append', value: 1, time: 10 });
     wire.appendRecord({ type: 'wire.test.append', value: 2, time: 11 });

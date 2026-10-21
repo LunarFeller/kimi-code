@@ -1,0 +1,719 @@
+apps/kimi-code/dist-web/assets/sequenceDiagram-DBY2YBRQ-xl-Awek9.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-162
+docs/zh/customization/hooks.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 120-121
+docs/zh/guides/sessions.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 80-81
+packages/agent-core-v2/src/agent/undo/undoService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 31,80,124
+apps/kimi-code/dist-web/assets/infoDiagram-FWYZ7A6U-Db4ndYZQ.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-2
+apps/kimi-code/src/tui/controllers/survey-controller.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-13,17-18,24-25,27,29,31,34,37-38,41-45,57-58,71-78,81-87,90,92-93,103-110,116-118,120-121,128-130,133,136,140,144-149,154,158,166-171,179,183,192,196,210,213,216,252,257,275,286,290,295,307,312-329,332-347,350-353,358-359,385-405,409,411-424,427-435,440-448,461,473,475,484,489,501-502,506,511-512,521,525-528,532-537
+packages/agent-core-v2/src/wire/wire.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 28
+packages/product/test/survey-turns.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-334
+apps/kimi-code/test/tui/commands/survey-preferences.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-5,9-10,14-15,22,27,37,47,54,65-201
+  s_95e2f67b61a566::t_49a90128fb5b84 202
+apps/kimi-code/dist-web/assets/cose-bilkent-JH36ORCC-D0OqAsiW.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/vennDiagram-L72KCM5P-Cwt-aDWP.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-34
+packages/agent-core-v2/src/session/sessionActivity/sessionRunGate.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-10
+packages/agent-core-v2/test/agent/contextMemory/loopEventFold.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 470-524
+packages/kap-server/test/rpc.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 643-660
+packages/agent-core-v2/test/workspace/sessionLifecycle/coldSessionArchive.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 17-18,95,242
+packages/kap-server/src/routes/clientConfigs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-60
+packages/product/test/rating-reports.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-180
+apps/kimi-code/test/tui/commands/provider.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 155-165
+packages/agent-core-v2/test/features/plan/tools/exit-plan-mode.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 43
+docs/en/reference/slash-commands.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 35
+packages/transcript/src/history/foldFacts.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 4,8,250-254,262-263,646-653,678-679,842-892,912,945-959
+  s_95e2f67b61a566::t_45b02159d823a8 960-961
+apps/kimi-code/dist-web/assets/chunk-2Q5K7J3B-CMIj8h4B.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/src/cli/v2/run-v2-print.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 36,45-47,57,85,295-301,316-349,351-354,369,436,440,461,465,481,485,662-665,669-684,688-689,694-705,715,717-720,723-732
+packages/agent-core-v2/src/session/sessionActivity/sessionActivity.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 32-33
+packages/agent-core-v2/src/errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 124-125
+apps/kimi-code/dist-web/assets/index-CYGRyXzg.css
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-32
+apps/kimi-code/dist-web/assets/index5-Cn8mMRE9.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/kap-server/src/routes/tools.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8,10,162-168
+apps/kimi-code/dist-web/assets/cynefin-VYW2F7L2-BnQdr27u.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-178
+apps/kimi-code/dist-web/assets/diagram-NH7WQ7WH-CKxpc0Zm.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-24
+packages/kap-server/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-12
+packages/kap-server/src/services/sessionRating.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-25
+packages/oauth/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3
+packages/kap-server/src/services/transcript/transcriptService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 663-666,671
+apps/kimi-code/src/tui/kimi-tui.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 12,23,48,51,86,120,200-201,351,356,371-374,512-515,780,843-855,874-895,902,1109-1110,1727,1736-1738,1740-1756,1902-1916,1942-1994,2045,2095,2102-2103,2151-2159,2167-2179,2184-2199,2204-2280,2308-2320,2386-2393,2395-2396,2554-2563,2575-2589,2989,3009,3125,3130,3223-3227,3236-3237,3252-3259,3530-3534,4381,4837-4838
+apps/kimi-code/dist-web/assets/mermaid.core-B_UcP3X_.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-314
+packages/agent-core-v2/src/app/sessionManager/sessionManagerService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 6,8,10-13,47,69,88-92,137,160-195,198,237,274,282,304
+apps/kimi-code/test/tui/commands/update-preferences.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 48,59,67,81
+packages/transcript/src/contract/schema.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 195
+packages/product/tsdown.config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-13
+packages/kap-server/test/config.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 127-135
+apps/kimi-code/src/tui/controllers/session-event-handler.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 127-128,1151,1165-1167
+docs/en/reference/server-api.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 68,75-76,369,403,621,665,669-670,676,2461
+apps/kimi-code/dist-web/assets/PreCodeBlock-txKBqZ4o.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/src/tui/utils/session-lock-errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-15
+packages/agent-core-v2/src/app/telemetry/events.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 2,598
+packages/kap-server/src/protocol/rest-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 35,63
+packages/agent-core-v2/src/features/externalHooks/session/sessionExternalHooksService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 23-24,69,79,133
+packages/node-sdk/src/config/toml.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 448
+docs/zh/configuration/data-locations.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 45-46
+apps/kimi-code/src/tui/commands/reload.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 42-44
+packages/product/src/session-rating/node/index.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-10
+packages/transcript/src/model/turn.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 66
+apps/kimi-code/dist-web/assets/chunk-V7JOEXUC-DyjtUXRY.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-206
+apps/kimi-code/dist-web/assets/vue.runtime.esm-bundler-IQcAQR5v.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-5
+packages/product/src/client-configs/node/client-configs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-168
+packages/agent-core-v2/test/os/backends/node-local/tools/glob.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 170-172
+packages/remote-control/test/remote-control.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 28,314-315,317-318,320,322-323,325,327,329-331,333,335-339,344,346-347,349-361,364-369,371-372,374-391,400,403-407,409,416-417,419-420,422-423,425,430-431,434-435,437,441,443-444,446,450-451,453-456,461-462,464-465,469,474-478,480-481,483-494,501-503,507,511,513-514,522-523,525,529,532-534,541,545,547,549,578-583,586,593,596,600-601,610,614,617,619-620,630,632,644,646-692,694-706,709-714,718-719,721-726,729,731-761,763-766,770-774,776-783,785-789,791,801-803,805-808,810,817-819,821-822,827,830-832,834-837,839-841,845-847,850,852,1813-2066
+  s_95e2f67b61a566::t_593d0abe268800 2067
+packages/agent-core-v2/test/agent/media/tools/read-media.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 117-119
+.changeset/wedged-turn-transcript-axis.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-5
+apps/kimi-code/src/tui/banner/banner-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,4,25
+apps/kimi-code/test/tui/components/dialogs/model-switch-confirm-dialog.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-140
+apps/kimi-code/src/tui/commands/provider.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 322-326,330
+packages/node-sdk/src/kimi-harness.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8,51,436-437
+  s_95e2f67b61a566::t_1aa8ae1cb9b8ef 438-439
+packages/agent-core-v2/src/persistence/interface/storage.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 148
+packages/product/src/session-rating/node/survey-turns.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-194
+packages/kap-server/src/routes/sessions.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 32,80,200,207,218,247,514,568,629,730,939-944,954-959
+packages/kap-server/test/clientConfigs.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-320
+apps/kimi-code/src/tui/utils/survey-policy.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,3,10,12-13,22-30
+packages/product/src/env.d.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-4
+apps/kimi-code/test/tui/kimi-tui-message-flow.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 17-18,232,314,962-1052,4929-5372,11910-11911,11918,11947,12052-12053,12077,12122-12123,12143,12147,12169-12170,12192,12224,12238-12258
+apps/kimi-code/dist-web/assets/dagre-VKFMJZFB-CoCFT_Gw.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-4
+packages/agent-core-v2/src/workspace/sessionLifecycle/coldSessionArchive.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 10,26-70
+packages/agent-core-v2/src/workspace/sessionLifecycle/sessionLifecycle.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8,10,67
+packages/agent-core-v2/test/app/telemetry/stubs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 19-25
+packages/agent-core-v2/src/features/btw/btwService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,11,18,23-39,46-49
+apps/kimi-code/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-52
+packages/node-sdk/src/sdk-rpc-client-v2.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 146-147,257,328,758-766,1012-1035,1822-1825,1874,2039-2044,2076-2083,2143-2148,2159-2165,2176-2179,2237-2243,2952
+packages/product/src/session-rating/common/survey-popup-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-92
+apps/kimi-code/dist-web/index.html
+  s_95e2f67b61a566::t_760aaf3d54c45a 17-18
+apps/kimi-code/dist-web/assets/index-jrcQVrPr.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-1428
+apps/kimi-code/src/tui/tui-state.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 78
+packages/agent-core-v2/src/features/btw/btw.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 5-6
+apps/kimi-code/test/tui/controllers/auth-flow.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,7-10,133-213
+  s_95e2f67b61a566::t_dd2d5180ffcf71 214
+packages/agent-core-v2/src/persistence/interface/appendLogStore.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 58-59
+apps/kimi-code/dist-web/assets/diagram-FQU43EPY-DuCbEYlU.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-3
+packages/product/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-45
+apps/kimi-code/test/cli/v2-run-print.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 16,25,27-28,32-34,36,247-263,304-305,390-430
+  s_95e2f67b61a566::t_53008bdfe3d447 431-432
+packages/agent-core-v2/src/app/telemetry/telemetryService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 94-97,199-202,268-270
+  s_95e2f67b61a566::t_1e3fc65575cb11 271
+packages/agent-core-v2/test/wire/wireService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 76
+  s_95e2f67b61a566::t_5565686011e222 1,14,107-171
+packages/agent-core-v2/test/app/telemetry/telemetryService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 12-15,529-598
+  s_95e2f67b61a566::t_80aa21bb41ddac 11,599-600
+apps/kimi-code/src/tui/commands/config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 2,9,20,31-37,40,47,60-61,73,140-145,391,395,404-566,885-888,907
+packages/kap-server/src/routes/workspaces.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 377
+packages/kap-server/test/sessions.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 31,135,766-796
+  s_95e2f67b61a566::t_9b77460d351a19 797-798
+apps/kimi-code/dist-web/assets/swimlanes-5IMT3BWC-BzZwuUMU.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-2
+apps/kimi-code/src/tui/components/panes/survey-panel.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,18,26
+packages/kap-server/src/services/sessionIdleReaper.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-79
+packages/remote-control/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-10
+apps/kimi-code/dist-web/assets/pegDiagram-2B236MQR-BsIicOhg.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/src/tui/commands/undo.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 25,106-113
+packages/agent-core-v2/test/features/externalHooks/integration.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 894,952,954
+apps/kimi-code/dist-web/assets/index-CNm1-2Ji.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-151
+apps/kimi-code/src/utils/client-configs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,6,8-11
+packages/agent-core-v2/test/agent/prompt/promptMetadataText.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 6,98-104
+  s_95e2f67b61a566::t_467898b12e7a5f 105
+packages/agent-core-v2/src/agent/loop/loopService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8,47,133-134,153-155,179-180,190,314,462-468,1140-1195,1263,1350-1356,2124
+packages/agent-core-v2/test/persistence/backends/node-fs/sessionLockService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-157
+packages/agent-core-v2/test/workspace/workspaceFs/fsService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 314-316
+packages/agent-core-v2/src/persistence/backends/node-fs/fileStorageService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,168-171
+  s_95e2f67b61a566::t_a906ebd5db6079 172-177
+packages/node-sdk/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-8
+apps/kimi-code/src/utils/cache-hint-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,4,30,42,47
+packages/agent-core-v2/test/harness/agent.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 131-133,194,1030-1036,1153-1155
+packages/agent-core-v2/test/wire/persistence.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 21-22,24,67,73,420-459
+  s_95e2f67b61a566::t_ae52df84a17ced 460-461
+packages/agent-core-v2/test/session/agentLifecycle/agentLifecycle.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 46-47,55-58,97,254-255,557,1288-1428
+  s_95e2f67b61a566::t_d200d5a2ab91b7 1429
+packages/agent-core-v2/test/session/sessionActivity/sessionRunGate.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-221
+docs/en/configuration/config-files.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 107
+packages/agent-core-v2/src/human/test/eventStore/eventStore.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 83-182
+packages/agent-core-v2/src/session/sessionMetadata/sessionMetadata.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 47
+packages/product/src/session-rating/node/engine.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-388
+packages/product/test/entry-points.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-90
+packages/product/src/session-rating/common/gates.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-141
+packages/product/test/session-rating.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-2015
+packages/agent-core-v2/src/session/sessionActivity/sessionRunGateService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-101
+apps/kimi-code/dist-web/assets/index8-DvUceGOQ.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-2
+packages/agent-core-v2/src/agent/task/taskService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1120-1124,1135-1141,1144-1147,1296-1301,1343-1348
+packages/agent-core-v2/src/session/agentLifecycle/getOrRestoreAgent.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-21
+packages/agent-core-v2/test/workspace/workspaceMcp/workspaceMcp.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 13,388
+packages/agent-core-v2/src/persistence/interface/sessionLock.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-136
+packages/agent-core-v2/src/index.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 178-179,468,568,574,584
+apps/kimi-code/dist-web/assets/abnfDiagram-VRR7QNED-DpFT7k4x.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/node-sdk/src/session.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 6-11,143-159
+  s_95e2f67b61a566::t_a08cf714c19122 160-161
+apps/kimi-code/dist-web/assets/stateDiagram-v2-6OUMAXLB-CKzt6rtG.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+.changeset/kap-session-idle-reclaim.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-5
+apps/kimi-code/src/tui/constant/survey.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 7-9
+apps/kimi-code/dist-web/assets/journeyDiagram-5HDEW3XC-BkOWINC6.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-139
+apps/kimi-code/test/tui/activity-pane.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 50-53
+packages/agent-core-v2/src/app/telemetry/telemetry.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 32,57
+apps/kimi-code/test/tui/config.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 12,41,109-110,200-271,273
+packages/kap-server/src/routes/skills.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 23,64,196,220-225,227-247,249-250,253-257,259-274,276-294,296-298,300
+packages/kap-server/test/transport-errors.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8-14,32-39
+  s_95e2f67b61a566::t_08f729c950c380 40
+apps/kimi-code/dist-web/assets/railroadDiagram-RFXS5EU6-BCTFslNT.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/klient/src/transports/memory/dispatcher.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 5-6,26,316
+packages/kap-server/src/protocol/events-zod.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 299-300
+packages/kap-server/src/protocol/rest-session-rating.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-21
+packages/product/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-9
+packages/product/src/client-configs/node/index.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/sankeyDiagram-HTMAVEWB-Ee-air4w.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-40
+packages/agent-core-v2/docs/config-manifest.toml
+  s_95e2f67b61a566::t_760aaf3d54c45a 11
+packages/transcript/test/layers.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 782,810,821,2083,2107,2115-2205,2247,2267,2274-2277
+apps/kimi-code/dist-web/assets/flowDiagram-23GEKE2U-DuNG8YS2.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-156
+packages/agent-core-v2/test/session/sessionTitle/sessionTitleService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 37,92-98
+  s_95e2f67b61a566::t_4693feaec1a366 99-100
+apps/kimi-code/dist-web/assets/timeline-definition-FHXFAJF6-9x8NoaNX.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-120
+packages/node-sdk/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,64
+apps/kimi-code/dist-web/assets/chunk-5VM5RSS4-DxIYPYOn.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-15
+apps/kimi-code/dist-web/assets/chunk-EX3LRPZG-DaQFz5qU.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-231
+packages/agent-core-v2/src/app/sessionManager/sessionManager.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 48
+packages/agent-core-v2/src/session/errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 14-15,17
+apps/kimi-code/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,89
+apps/kimi-code/src/tui/components/dialogs/model-switch-confirm-dialog.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-132
+packages/agent-core-v2/src/human/eventStore/eventStore.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 28,78,88,142,144-149,171,206,209-221,290-296
+apps/kimi-code/dist-web/assets/index9-IShPpQOf.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/kanban-definition-HUTT4EX6-DiQ_qC6Q.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-89
+apps/kimi-code/dist-web/assets/requirementDiagram-TGXJPOKE-BvFhzhoM.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-84
+packages/agent-core-v2/src/wire/wireService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 13-14,68,82-83,99-102,117,124,138-140,144-147,423,426-428,461-491,507-513
+  s_95e2f67b61a566::t_37da321073ae41 98
+packages/kap-server/src/start.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 17,83,86,153,278-282,342,348,382,503,644
+packages/agent-core-v2/test/persistence/backends/node-fs/appendLogStore.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 41,2295-2306,2308-2333,2338,2345-2347,2351-2488
+  s_95e2f67b61a566::t_0bb70b8f212b63 1053-1084,2334-2337,2339-2344,2348-2350
+  s_95e2f67b61a566::t_7ab36fa6cea4a6 1085-1104
+  s_95e2f67b61a566::t_56b3259e8d4ed0 1440,1504,1521,1538,1583
+  s_95e2f67b61a566::t_37da321073ae41 1
+  s_95e2f67b61a566::t_7f4ac50594bdad 764,781,806,826
+  s_95e2f67b61a566::t_aa50b2f43a2df7 948-1011
+  s_95e2f67b61a566::t_9d19e5dfb680dd 909-947,1012-1052,1105-1111,1113,1115-1153
+  s_95e2f67b61a566::t_b08f1d849f2634 1112,1114
+  s_95e2f67b61a566::t_eea94e9c7d3fca 10,17-18,58,2307
+  s_95e2f67b61a566::t_f128adb08c9d6c 2489
+packages/product/src/shared/node/json-file.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-62
+apps/kimi-code/dist-web/assets/c4Diagram-LMCZKHZV-FIxdIiPR.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-10
+apps/kimi-code/dist-web/assets/layout-DcalC1b9.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-4
+apps/kimi-code/dist-web/assets/CodeBlockNode-DXHZxqco.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-43
+apps/kimi-code/dist-web/assets/erDiagram-Q63AITRT-DE-pAoai.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-85
+packages/agent-core-v2/test/agent/contextMemory/context.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 15
+packages/kap-server/src/transport/errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 35-43,61-65,69-70
+packages/product/vitest.config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-11
+apps/kimi-code/dist-web/assets/markstream-D5Q-JKRm.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-7
+packages/agent-core-v2/src/agent/contextMemory/loopEventFold.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 229,231,236,244,246-247,255,257-258,264,269,273,290-297,301-304,311,313-320,338-342,355-359,362-366
+packages/product/src/session-rating/common/types.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-24
+packages/node-sdk/test/sdk-rpc-client-v2.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 49-53,311-461,1382-1411
+  s_95e2f67b61a566::t_768546fdf9c7fa 1412
+packages/kap-server/test/prompts.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 24-25,579-601,1835-1866
+  s_95e2f67b61a566::t_ec99ad8c29d97b 1867
+packages/node-sdk/src/v2/resume-replay.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 13-14,51,81,121-127,201,297,301,430,461-462
+packages/product/src/session-rating/node/kfc.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-11
+packages/product/src/session-rating/node/session-rating-host.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-384
+packages/agent-core-v2/src/persistence/backends/memory/sessionLockService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-9
+packages/agent-core-v2/test/app/workspaceAliases/workspaceAliasesService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 92-97,102-103
+packages/product/test/survey-popup-config.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-552
+apps/kimi-code/dist-web/assets/blockDiagram-677ZJIJ3--KepqvbS.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-132
+packages/node-sdk/src/errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 22-23,157-168
+apps/kimi-code/src/tui/commands/resolve.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 26-27,76-86,90
+packages/agent-core-v2/src/persistence/backends/node-fs/appendLogStore.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 2,57,63-64,68,73-76,80-83,91,97-100,119-127,136-163,165-170,173-176,207,218-219,221,223,227,264,268,270,274,302-320,322-340,349,355-356,360,365-368,429-432,648,652-677,692,702-705,721,732-734
+  s_95e2f67b61a566::t_e4b434c21bd6cb 514-522
+  s_95e2f67b61a566::t_c286a0b6d6cf03 616-617,619,621-625,632,736-738,742-746
+  s_95e2f67b61a566::t_a55bd4e0205844 428,615,618,620,626-630,634,741,747
+  s_95e2f67b61a566::t_37da321073ae41 725,748
+  s_95e2f67b61a566::t_c29aa1ccfa36d2 321
+  s_95e2f67b61a566::t_30153f07b5b7cd 612-614
+  s_95e2f67b61a566::t_770c14b84952eb 631
+  s_95e2f67b61a566::t_38c3a8f05b1e26 633
+apps/kimi-code/dist-web/assets/ishikawaDiagram-FXEZZL3T-sXLg1ljK.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-70
+packages/agent-core-v2/test/app/sessionManager/sessionManagerService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,6-9,11-13,18-20,23,26,119,147,188,226,264,302,340,377,415,437,466,503,517-686,826,879-947
+packages/product/test/cooldown-store.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-65
+apps/kimi-code/dist-web/assets/index10-Bk1rSddE.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-8
+docs/zh/configuration/env-vars.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 143
+packages/product/src/session-rating/node/event-properties.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-138
+apps/kimi-code/test/tui/controllers/survey-controller.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-6,17-18,66,80,84-89,130,137-149,178,181-183,192,196,199,253,257,272,274,279,286,293,296,298-299,302,304,306,308-311,313,317,319-322,324-325,328-333,336-352,354-360,363,365,368-390,393-394,397-398,400-403,405-411,414-415,418,420-422,425,428-432,436,439-440,442-446,449-451,453-454,456-457,460-461,463-464,466-468,470-471,473,476-477,479-487,491-492,494-495,497-498,501,505-506,508-510,512-513,515-519,521-525,527-531,534,537-539,541-543,545-546,548-550,554-555,557-558,560-567,569-570,572,574,576-577,581,584-586,588-594,596-599,601-602,606,609-612,614-616,620-621,625-626,628-631,633-635,639-640,644,647,649-652,654-655,657,659-662,664-665,668,672-673,675-676,679-681,683-687,690,693,695-700,703,707-708,710-711,713-719,722,726-727,729-734,737-742,745,748-749,751-755,758,762-763,765-770,773-778,781,784-785,787-790,793-794,796-798,800-808,812,815-818,820,823-824,828-829,831-834,836-838,841,843,846-847,849-850,852,854-857,860-861,863-864,866-867,870,874-875,877-880,882,884-887,890-891,893-894,896-897,900,904-905,907-910,912,915,919-920,922-923,925,929-930,932-933,935,937-938,942-943,945-946,948-949,951-956,959-960,963-968,970-973,980,984,986,988-993,996-998,1000-1002,1004-1007,1010-1012,1014-1017,1019-1023,1026-1028,1030-1033,1035-1039,1042-1051,1053-1056,1059-1061,1064-1067,1069-1072,1075-1077,1079-1083,1085-1088,1091-1093,1095-1096,1098-1101,1104-1106,1108-1113,1115-1118,1121-1123,1125-1126,1128-1131,1134,1138-1147,1149-1153,1156,1160-1164,1166-1169,1172,1175-1178,1180-1181,1183,1186,1188,1191,1194-1199,1201-1206,1212,1215-1216,1219-1221,1224,1226,1228-1229,1231,1234-1236,1238-1242
+packages/product/test/session-rating-host.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-149
+apps/kimi-code/src/tui/types.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 299,302-305
+apps/kimi-code/src/utils/model-switch-confirm-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-111
+packages/kap-server/src/routes/registerApiV1Routes.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 6,17,37,76,127-130,140-145
+apps/kimi-code/dist-web/assets/chunk-JWPE2WC7-TZtJmqSP.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/channel-Bw0eTBly.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/agent-core-v2/src/persistence/backends/memory/inMemoryStorageService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 105-108
+packages/kap-server/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,37
+.changeset/quick-resume-long-sessions.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-5
+packages/kap-server/src/routes/sessionErrors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-32
+docs/zh/release-notes/changelog.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 9-29
+apps/kimi-code/dist-web/assets/Tooltip-B-G_7eI0.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/kap-server/test/sessionIdleReaper.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-85
+apps/kimi-code/dist-web/assets/wardleyDiagram-EHGQE667-DqPls4-l.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-78
+packages/agent-core-v2/src/session/sessionMetadata/promptMetadata.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 5,23-24,30,32-33
+packages/agent-core-v2/test/stubs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 12-13,170-177
+  s_95e2f67b61a566::t_650b8dbc6908fe 178-179
+packages/kap-server/src/services/transcript/coreEventMap.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 482,485-490,492,545-592
+  s_95e2f67b61a566::t_430ecee88a622b 593-594
+packages/kap-server/src/transport/ws/v1/sessionEventBroadcaster.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 25,27,123,153,158-159,172-173,178-199,225-233,235,297,569-571,573,578-584,594-599,601,603-631,634,638-655,657-680,683-685,687-691
+  s_95e2f67b61a566::t_a3fa2789d52f94 602
+apps/kimi-code/dist-web/assets/chunk-MOJQB5TN-m4Krf3Vn.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-88
+apps/kimi-code/test/tui/utils/survey-policy.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,3,5,18-20,23,33-34,37,39-40
+packages/product/test/survey-policy.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-543
+apps/kimi-code/dist-web/assets/preCodeDiffMetrics-CMO2XhRi.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/pieDiagram-ENE6RG2P-CBmVH0d_.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-39
+packages/agent-core-v2/test/session/subagent/subagentScopeCache.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 269-270
+apps/kimi-code/src/tui/controllers/auth-flow.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 8-12,92-96,98,116-135
+packages/agent-core-v2/src/state/eventDispatcherService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 54,172,195-197,297-306,315-316,351-355,360-366,368,537-548,554,567-568,618-626,632-636,710-711,714-719,770-773,775,793,804-805,814,822,834-837,902-907,914
+packages/kap-server/src/protocol/error-codes.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 65-66
+docs/zh/reference/slash-commands.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 35
+apps/kimi-code/dist-web/assets/stateDiagram-2N3HPSRC-C5DOlDDh.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/src/tui/components/panes/queue-pane.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 25-31
+packages/agent-core-v2/src/persistence/backends/node-fs/sessionLockService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-211
+packages/agent-core-v2/test/app/sessionExport/sessionExport.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 902,985
+packages/agent-core-v2/test/state/eventDispatcher.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 72,104-105,185-198,219,443-494
+  s_95e2f67b61a566::t_a345e51496139d 495
+packages/agent-core-v2/test/agent/task/taskService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 52,55-56,873-874
+packages/agent-core-v2/test/wire/stubs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 13,15-16,18,51-52,84-93,117-124,144-145,196,258-259
+packages/kap-server/src/routes/tasks.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,80,114,122,188,201,208,220,223-224
+packages/agent-core-v2/test/features/btw/btw.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 5,11,20-24,36-61,69-70,72,82,99-102,106,117,122-124,135,152,157-189
+packages/kap-server/test/services/transcript.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 3163-3209
+packages/kap-server/test/skills.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 6-7,9,17,273-305
+  s_95e2f67b61a566::t_1b5dfdf93b2206 306
+packages/node-sdk/src/config/schema.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 316,367
+packages/product/src/session-rating/node/cooldown-store.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-42
+packages/kap-server/src/services/clientConfigs.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-90
+apps/kimi-code/dist-web/assets/xychartDiagram-FW5EYKEG-BuEkU8kF.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-7
+packages/agent-core-v2/src/session/sessionMetadata/sessionMetadataService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 10,23,50,58,66-70,95,100-113,118-132,144,150-160,173-184,239-241,256-258
+packages/kap-server/test/openapi.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 117-143
+apps/kimi-code/dist-web/assets/swimlanesDiagram-G3AALYLV-C11X_Fiy.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-8
+packages/agent-core-v2/test/agent/mcp/output.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 53-55
+apps/kimi-code/dist-web/assets/quadrantDiagram-ABIIQ3AL-By6VfuwF.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-7
+apps/kimi-code/src/tui/config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 230-239,241-260,307,373
+apps/kimi-code/src/utils/recommended-effort-config.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,4,34,38,42
+apps/kimi-code/dist-web/assets/chunk-RYQCIY6F-BrAj5IFL.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/agent-core-v2/src/workspace/sessionLifecycle/sessionLifecycleService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 36,45,116,118,173,269,296,308,312-313,348,358-362,368,391,412,429,432,441-442,448-469,493-509,556,712
+docs/en/configuration/env-vars.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 143
+packages/product/src/session-rating/node/survey-popup-config-feed.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-119
+packages/node-sdk/src/index.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 20
+apps/kimi-code/test/tui/message-replay.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 204,229
+apps/kimi-code/dist-web/assets/gitGraphDiagram-IHSO6WYX-pTb313_D.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-106
+apps/kimi-code/dist-web/assets/diagram-G47NLZAW-DaD-7Fad.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-24
+apps/kimi-code/dist-web/assets/sizeCapture-X5ZJPWSS-DTR1exX9.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/test/tui/commands/model-switch-confirm.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-286
+packages/agent-core-v2/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3
+apps/kimi-code/dist-web/assets/classDiagram-v2-EOCWNBFH-Bx-1PFrT.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/kap-server/src/routes/sessionRating.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-80
+packages/oauth/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-8
+packages/product/src/session-rating/common/index.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-7
+apps/kimi-code/src/tui/commands/dispatch.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 168-169,304-313,378-388
+apps/kimi-code/dist-web/assets/chunk-XXDRQBXY-AHUPVB2f.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/chunk-VR4S4FIN-CYEgbtU1.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/agent-core-v2/test/session/subagent/forkParity.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 119-126
+packages/remote-control/src/remote-control.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 34-62,154,349-350,378,433,443,448,461,574,795-798,826,828,832,834,839,898,928,949-953,964,966-968
+packages/transcript/src/ops/apply.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 189-190
+packages/agent-core-v2/src/workspace/workspaceInstance/workspaceInstanceManagerService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 28,80,232
+packages/agent-core-v2/src/agent/contextMemory/contextOps.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 89,99-100
+packages/agent-core-v2/src/state/state.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 39,50,73,88,171-173
+packages/product/src/session-rating/node/ledger.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-109
+apps/kimi-code/dist-web/assets/ebnfDiagram-CCIWWBDH-FCeqrnaL.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+docs/en/configuration/data-locations.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 45-46
+packages/agent-core-v2/test/workspace/workspaceInstance/workspaceInstanceManager.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 142
+packages/node-sdk/src/rpc.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 172-178,184-187,229-230,505-515,519-526
+apps/kimi-code/dist-web/assets/chunk-32BRIVSS-D_mpvupa.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/diagram-WEI45ONY-5zxq5HEQ.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-41
+apps/vscode/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 6
+apps/kimi-code/dist-web/assets/arc-CeSAjRC_.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+packages/agent-core-v2/src/agent/fullCompaction/fullCompactionService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 48,160,338-340
+packages/kap-server/test/sessionRating.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-560
+packages/agent-core-v2/src/agent/loop/machine/engine.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 327
+apps/kimi-code/dist-web/assets/linear-Vyz-NdPh.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/cynefinDiagram-TSTJHNR4-B57Jxc_T.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-62
+packages/agent-core-v2/test/features/plan/tools/plan-tools-telemetry.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 47
+packages/node-sdk/src/events.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 103-108
+apps/vscode/test/event-adapter.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 10,570-577
+  s_95e2f67b61a566::t_c8e9a89ccf7814 578
+packages/kap-server/test/sessionEventBroadcaster.test.ts
+  s_95e2f67b61a566::t_6b21dad19bc1a7 1308-1379
+  s_95e2f67b61a566::t_760aaf3d54c45a 105-159,426,465,467-469,1074-1082,1084,1087-1088,1092,1095,1099-1140,1242-1306
+  s_95e2f67b61a566::t_84495a90513f57 1307
+apps/kimi-code/dist-web/assets/classDiagram-OUVF2IWQ-Bx-1PFrT.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+apps/kimi-code/dist-web/assets/index6-j0GEB-FX.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1
+flake.nix
+  s_95e2f67b61a566::t_760aaf3d54c45a 75,100
+apps/kimi-code/test/tui/kimi-tui-startup.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1,137,218,333-442
+  s_95e2f67b61a566::t_d3bca984734b47 443
+apps/vscode/shared/errors.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 44-45,85-87
+docs/en/customization/hooks.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 120-121
+apps/kimi-code/src/utils/survey-setting.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-50
+packages/agent-core-v2/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-9
+packages/acp-server/src/session.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 105-106,116-119,138-148
+packages/agent-core-v2/test/agent/task/taskManager.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 14,1303-1309,1318-1322
+packages/remote-control/package.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 3
+packages/agent-core-v2/test/tool/tool.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 348,540
+apps/kimi-code/test/utils/model-switch-confirm-config.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-281
+packages/agent-core-v2/test/session/sessionMetadata/sessionMetadata.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 7,9-10,13,15-16,23-24,48-66,79-80,577,699-799
+apps/kimi-code/test/tui/signal-handlers.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 44
+packages/kap-server/src/services/telemetry.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 25,29-33,41
+packages/agent-core-v2/src/session/sessionActivity/sessionActivityService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 67,124-127,219
+packages/kap-server/test/boot.test.ts
+  s_95e2f67b61a566::t_b6899f40f2416e 1,12,16-18,25,353-442
+  s_95e2f67b61a566::t_760aaf3d54c45a 162-176
+  s_95e2f67b61a566::t_5f5a682d02fb00 443
+docs/en/guides/sessions.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 80-81
+apps/vscode/CHANGELOG.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 3-12
+docs/zh/configuration/config-files.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 107
+packages/agent-core-v2/src/app/sessionManager/sessionLookup.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 7,64-86
+  s_95e2f67b61a566::t_ee28b3940ed54e 87
+packages/agent-core-v2/src/session/agentLifecycle/agentLifecycle.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 7,12
+packages/kap-server/src/transport/dispatcher.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 3,42
+packages/product/tsconfig.json
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-4
+apps/kimi-code/dist-web/assets/ganttDiagram-NO4QXBWP-Dz61VBiM.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-292
+apps/kimi-code/dist-web/assets/mindmap-definition-LN4V7U3C-DdFheN9U.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-96
+packages/agent-core-v2/src/session/agentLifecycle/agentLifecycleService.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 28,61,130,284-285,335,344-345,348
+packages/node-sdk/src/v2/config-mapper.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 48
+apps/kimi-code/dist-web/assets/architectureDiagram-ZJ3FMSHR-D-PbXpVD.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-36
+packages/product/test/client-configs.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-476
+apps/kimi-code/dist-web/assets/diagram-OA4YK3LP-B5bqGU_R.js
+  s_95e2f67b61a566::t_760aaf3d54c45a 1-30
+packages/agent-core-v2/test/app/workspace/workspaceService.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 83
+packages/kap-server/test/wsV1Resync.test.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 9,286-306
+packages/kap-server/src/routes/prompts.ts
+  s_95e2f67b61a566::t_760aaf3d54c45a 5,28,54,110,205,213-227,229-240,243-245,247-248,250-267,269-272,274-282,284-296,298-336,338-352,354-361,363-368,370-372,424
+docs/zh/reference/server-api.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 68,75-76,369,403,621,665,669-670,676,2461
+docs/en/release-notes/changelog.md
+  s_95e2f67b61a566::t_760aaf3d54c45a 9-29
+packages/kap-server/test/__snapshots__/apiSurface.snapshot.test.ts.snap
+  s_95e2f67b61a566::t_8510ad3b5595b1 347-350,491-494
+pnpm-lock.yaml
+  s_95e2f67b61a566::t_79ae005a161992 97-99,653-655,789-791,834-845,13022
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.1",
+  "base_commit_sha": "2fa3077cfc4f614a21edcccbb5dffb313ee62826",
+  "prompts": {},
+  "sessions": {
+    "s_95e2f67b61a566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1534a-fe2d-7192-ad6f-a74d6ca88fb0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LunarFeller <justnowgone@gmail.com>"
+    }
+  }
+}

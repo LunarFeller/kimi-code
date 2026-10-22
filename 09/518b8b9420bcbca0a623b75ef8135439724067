@@ -1,0 +1,56 @@
+packages/kap-server/src/transport/ws/v1/sessionEventBroadcaster.ts
+  s_95e2f67b61a566::t_2b4f11a5eade48 526
+  s_95e2f67b61a566::t_04f90b8b528b88 78,520,522-525,527-533
+packages/agent-core-v2/src/persistence/backends/node-fs/appendLogStore.ts
+  s_95e2f67b61a566::t_8e3f75f11ad0b9 582-588,607
+.changeset/quiet-events-replay.md
+  s_95e2f67b61a566::t_ac5d8089557ba6 1-5
+docs/en/customization/hooks.md
+  s_95e2f67b61a566::t_492afbdb743d1f 120
+packages/acp-server/test/close.test.ts
+  s_95e2f67b61a566::t_4e721ced639a03 9-11,14-15,17-18,76,93-99,101-107,137-140,165-201
+  s_95e2f67b61a566::t_f2313bdd7e87be 13,100,141-147
+  s_95e2f67b61a566::t_17ae0cf6ea6787 202-203
+packages/agent-core-v2/test/persistence/backends/node-fs/appendLogStore.test.ts
+  s_95e2f67b61a566::t_b9fb024efaa737 1264,1300,1305,1335,2504,2536,2827,2874-2882,2890
+  s_95e2f67b61a566::t_70eff516dd4569 2911,2913-2914,3145,3186,3191,3220-3223
+  s_95e2f67b61a566::t_1d82254702bf57 2897-2910,2912,2915-2964
+docs/zh/customization/hooks.md
+  s_95e2f67b61a566::t_492afbdb743d1f 120
+packages/acp-server/src/start.ts
+  s_95e2f67b61a566::t_b0e90adf9a5666 197-207
+packages/kap-server/test/sessionEventBroadcaster.test.ts
+  s_95e2f67b61a566::t_8c83e37ce416c7 937-939,945-946
+  s_95e2f67b61a566::t_13ef1a53d4f797 983
+  s_95e2f67b61a566::t_2f166a37c91669 1,56-62,64-70,543
+  s_95e2f67b61a566::t_2b4f11a5eade48 63
+  s_95e2f67b61a566::t_7b4594bd2dd252 892-936,940-944,947-982,984-1024
+packages/node-sdk/src/sdk-rpc-client-v2.ts
+  s_95e2f67b61a566::t_b0e90adf9a5666 144,529-539,546,559
+packages/kap-server/src/start.ts
+  s_95e2f67b61a566::t_b0e90adf9a5666 9,352-361
+packages/node-sdk/test/sdk-rpc-client-v2.test.ts
+  s_95e2f67b61a566::t_f2313bdd7e87be 64,501,542-548
+  s_95e2f67b61a566::t_e43a104ee5948e 48,60,68-70,474,494-500,502-508,538-541,566-612
+  s_95e2f67b61a566::t_da51a6998f9419 613-615
+packages/kap-server/test/boot.test.ts
+  s_95e2f67b61a566::t_f2313bdd7e87be 364-365,372,436-441
+  s_95e2f67b61a566::t_39414de651fa92 13-14,16,22-24,362,377-390,428,432-435,461-504
+  s_95e2f67b61a566::t_9ffa94718630bf 505-506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.1",
+  "base_commit_sha": "09518b8b9420bcbca0a623b75ef8135439724067",
+  "prompts": {},
+  "sessions": {
+    "s_95e2f67b61a566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1534a-fe2d-7192-ad6f-a74d6ca88fb0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LunarFeller <justnowgone@gmail.com>"
+    }
+  }
+}

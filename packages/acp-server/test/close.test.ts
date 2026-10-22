@@ -162,6 +162,96 @@ describe('acp-server session/close', () => {
     }
   }, 30_000);
 
+  it('server close waits for a session close already flushing accepted wire dehydration', async () => {
+    const c = await boot();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let markFlushing!: () => void;
+    const flushing = new Promise<void>((resolve) => { markFlushing = resolve; });
+    let sessionClosing: Promise<void> | undefined;
+    let closing: Promise<void> | undefined;
+    let wire: IWireService | undefined;
+    let restoreSpies = () => {};
+    const unexpected: unknown[] = [];
+    try {
+      const created = await c.send('session/new', { cwd: homeDir, mcpServers: [] }) as { sessionId: string };
+      const sessionManager = c.server.core.accessor.get(ISessionManager);
+      const session = sessionManager.get(created.sessionId)!;
+      const agents = session.accessor.get(IAgentLifecycleService);
+      if (agents.handleOf(MAIN_AGENT_ID) === undefined) {
+        await agents.create({ agentId: MAIN_AGENT_ID });
+      }
+      wire = agents.handleOf(MAIN_AGENT_ID)!.accessor.get(IWireService);
+      await wire.flush();
+      const wirePath = wire.journalPath()!;
+      const flush = wire.flush.bind(wire);
+      const flushingWire = vi.spyOn(wire, 'flush').mockImplementation(() => {
+        markFlushing();
+        return flush();
+      });
+      const appended = vi.spyOn(c.server.core.accessor.get(IFileSystemStorageService), 'append');
+      restoreSpies = () => {
+        flushingWire.mockRestore();
+        appended.mockRestore();
+      };
+      const closedSession = vi.fn();
+      sessionManager.onDidCloseSession!(closedSession);
+      setUnexpectedErrorHandler((error) => unexpected.push(error));
+      wire.appendRecord({ type: 'test.shutdown.marker' }, async (record) => {
+        markStarted();
+        await gate;
+        return { ...record, marker: 'dehydrated-during-session-close' };
+      });
+      await started;
+      sessionClosing = sessionManager.close(session.id);
+      void sessionClosing.catch(() => {});
+      await flushing;
+      expect(agents.list()).toEqual([]);
+      expect(sessionManager.get(session.id)).toBe(session);
+
+      let closed = false;
+      let writesAtClose = 0;
+      closing = c.close().then(() => {
+        closed = true;
+        writesAtClose = appended.mock.calls.length;
+      });
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect(closed).toBe(false);
+      release();
+      await sessionClosing;
+      await closing;
+      await wire.drainPersisted();
+
+      const bytes = await readFile(wirePath, 'utf8');
+      const records = bytes.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+      expect(records.filter((record) => record.type === 'test.shutdown.marker')).toEqual([{
+        type: 'test.shutdown.marker',
+        marker: 'dehydrated-during-session-close',
+      }]);
+      expect(closedSession).toHaveBeenCalledOnce();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(appended).toHaveBeenCalledTimes(writesAtClose);
+      expect(await readFile(wirePath, 'utf8')).toBe(bytes);
+      expect(unexpected).toEqual([]);
+    } finally {
+      release();
+      try {
+        if (closing !== undefined) await closing;
+        else await c.close();
+        await Promise.race([
+          sessionClosing?.catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ]);
+        await wire?.drainPersisted();
+      } finally {
+        restoreSpies();
+        resetUnexpectedErrorHandler();
+      }
+    }
+  }, 30_000);
+
   it('server close settles session metadata before draining the session-index mirror', async () => {
     const c = await boot();
     const created = await c.send('session/new', { cwd: homeDir, mcpServers: [] }) as { sessionId: string };

@@ -563,6 +563,102 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
     }
   });
 
+  it('close() waits for an in-flight public session close to finish accepted wire dehydration', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-'));
+    const workDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-work-'));
+    tempDirs.push(homeDir, workDir);
+    const client = new SDKRpcClientV2({ homeDir, identity: TEST_IDENTITY });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let markFlushing!: () => void;
+    const flushing = new Promise<void>((resolve) => { markFlushing = resolve; });
+    let closing: Promise<void> | undefined;
+    let wire: IWireService | undefined;
+    let restoreStorage = () => {};
+    let restoreFlush = () => {};
+    const unexpected: unknown[] = [];
+    try {
+      await client.createSession({ id: 'ses_shutdown_inflight_close', workDir });
+      const sessions = client.engineAccessor.get(ISessionManager);
+      const session = getLiveSessionById(client.engineAccessor, 'ses_shutdown_inflight_close')!;
+      const agents = session.accessor.get(IAgentLifecycleService);
+      await agents.create({ agentId: MAIN_AGENT_ID });
+      wire = agents.handleOf(MAIN_AGENT_ID)!.accessor.get(IWireService);
+      await wire.flush();
+      const wirePath = wire.journalPath()!;
+      const baseline = await readFile(wirePath);
+      const flush = wire.flush.bind(wire);
+      const flushSpy = vi.spyOn(wire, 'flush').mockImplementation(() => {
+        markFlushing();
+        return flush();
+      });
+      restoreFlush = () => { flushSpy.mockRestore(); };
+      const storage = client.engineAccessor.get(IFileSystemStorageService);
+      const appended = vi.spyOn(storage, 'append');
+      const written = vi.spyOn(storage, 'write');
+      restoreStorage = () => {
+        appended.mockRestore();
+        written.mockRestore();
+      };
+      setUnexpectedErrorHandler((error) => unexpected.push(error));
+      const record = { type: 'test.shutdown.marker', marker: 'dehydrated-before-close' };
+      wire.appendRecord(record, async (pending) => {
+        markStarted();
+        await gate;
+        return pending;
+      });
+      await started;
+      let sessionClosed = false;
+      const sessionCloseErrors: unknown[] = [];
+      const sessionClosing = client.closeSession({ sessionId: session.id }).then(
+        () => { sessionClosed = true; },
+        (error: unknown) => { sessionCloseErrors.push(error); },
+      );
+      await flushing;
+      expect(agents.list()).toEqual([]);
+      expect(sessions.get(session.id)).toBe(session);
+      let closed = false;
+      let appendsAtClose = 0;
+      let writesAtClose = 0;
+      closing = client.close().then(() => {
+        closed = true;
+        appendsAtClose = appended.mock.calls.length;
+        writesAtClose = written.mock.calls.length;
+      });
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect.soft(closed).toBe(false);
+      release();
+      await sessionClosing;
+      await closing;
+      await wire.drainPersisted();
+      expect.soft(sessionClosed).toBe(true);
+      expect.soft(sessionCloseErrors).toEqual([]);
+      const bytes = await readFile(wirePath);
+      expect.soft(bytes).toEqual(Buffer.concat([
+        baseline,
+        Buffer.from(JSON.stringify(record) + '\n'),
+      ]));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(appended).toHaveBeenCalledTimes(appendsAtClose);
+      expect(written).toHaveBeenCalledTimes(writesAtClose);
+      expect(await readFile(wirePath)).toEqual(bytes);
+      expect(unexpected).toEqual([]);
+    } finally {
+      release();
+      try {
+        if (closing !== undefined) await closing;
+        else await client.close();
+        await wire?.drainPersisted();
+      } finally {
+        restoreFlush();
+        restoreStorage();
+        resetUnexpectedErrorHandler();
+      }
+    }
+  });
+
   it('close() settles session metadata before draining the session-index mirror', async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-metadata-close-'));
     const workDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-work-'));

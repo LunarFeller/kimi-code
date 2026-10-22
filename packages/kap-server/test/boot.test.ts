@@ -458,6 +458,83 @@ describe('server-v2 boot', () => {
     }
   });
 
+  it('waits for a session close already draining accepted wire dehydration before shutdown', async () => {
+    home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-session-close-'));
+    server = await startServer({
+      hostIdentity: TEST_HOST_IDENTITY,
+      host: '127.0.0.1',
+      port: 0,
+      homeDir: home,
+      logLevel: 'silent',
+    });
+    const manager = server.core.accessor.get(ISessionManager);
+    const session = await manager.create({ workDir: home });
+    const agents = session.accessor.get(IAgentLifecycleService);
+    await agents.create({ agentId: 'main' });
+    const wire = agents.handleOf('main')!.accessor.get(IWireService);
+    await wire.flush();
+    const path = wire.journalPath()!;
+    const baseline = await readFile(path);
+    const storage = server.core.accessor.get(IFileSystemStorageService);
+    const append = vi.spyOn(storage, 'append');
+    const write = vi.spyOn(storage, 'write');
+    const unexpected: unknown[] = [];
+    setUnexpectedErrorHandler((error) => { unexpected.push(error); });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const dehydrating = new Promise<void>((resolve) => { started = resolve; });
+    let flushing!: () => void;
+    const draining = new Promise<void>((resolve) => { flushing = resolve; });
+    const flush = wire.flush.bind(wire);
+    vi.spyOn(wire, 'flush').mockImplementation(() => { flushing(); return flush(); });
+    let sessionClosing: Promise<void> | undefined;
+    let closing: Promise<void> | undefined;
+    let closed = false;
+    try {
+      const record = { type: 'wire.test.concurrent-close', time: 1 };
+      wire.appendRecord(record, async (accepted) => {
+        started();
+        await gate;
+        return accepted;
+      });
+      await dehydrating;
+      sessionClosing = manager.close(session.id);
+      void sessionClosing.catch(() => {});
+      await draining;
+      expect(agents.list()).toEqual([]);
+      closing = server.close().then(() => { closed = true; });
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect(closed).toBe(false);
+
+      release();
+      await sessionClosing;
+      await closing;
+      server = undefined;
+      const bytes = Buffer.concat([baseline, Buffer.from(JSON.stringify(record) + '\n')]);
+      expect(await readFile(path)).toEqual(bytes);
+      expect(unexpected).toEqual([]);
+      const appendsAtClose = append.mock.calls.length;
+      const writesAtClose = write.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(append).toHaveBeenCalledTimes(appendsAtClose);
+      expect(write).toHaveBeenCalledTimes(writesAtClose);
+      expect(await readFile(path)).toEqual(bytes);
+      expect(unexpected).toEqual([]);
+    } finally {
+      release();
+      await closing;
+      await Promise.race([
+        sessionClosing?.catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 50)),
+      ]);
+      if (closed) server = undefined;
+      resetUnexpectedErrorHandler();
+      append.mockRestore();
+      write.mockRestore();
+    }
+  });
+
   it('settles session metadata before draining the session-index mirror on shutdown', async () => {
     home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-metadata-close-'));
     server = await startServer({

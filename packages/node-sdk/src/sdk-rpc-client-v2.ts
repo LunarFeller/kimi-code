@@ -525,20 +525,26 @@ export class SDKRpcClientV2 extends SDKRpcClientBase {
     }
     await this.klient.close();
     const sessionManager = this.app.accessor.get(ISessionManager);
-    await Promise.all(sessionManager.list().map(async (session) => {
-      const agents = session.accessor.get(IAgentLifecycleService);
-      for (const agent of agents.list()) {
-        try {
-          await agents.remove(agent);
-        } catch (error) {
-          this.app.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
-            sessionId: session.id,
-            agentId: agent.agentId,
-            error,
-          });
-        }
-      }
-    }));
+    await Promise.all(
+      sessionManager.list().map((session) =>
+        sessionManager.withLifecycleSerialization(session.id, async () => {
+          const current = sessionManager.get(session.id);
+          if (current === undefined) return;
+          const agents = current.accessor.get(IAgentLifecycleService);
+          for (const agent of agents.list()) {
+            try {
+              await agents.remove(agent);
+            } catch (error) {
+              this.app.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
+                sessionId: session.id,
+                agentId: agent.agentId,
+                error,
+              });
+            }
+          }
+        }),
+      ),
+    );
     // Same shutdown order as kap-server: drain the session-index mirror while
     // the query store is still open, then await the asynchronous closes that
     // disposal fires — a host that removes homeDir right after close() must

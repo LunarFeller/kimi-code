@@ -193,20 +193,24 @@ export async function runAcpServerWithStream(
       // deliver into a torn-down scope.
       await klient.close();
       const sessionManager = core.accessor.get(ISessionManager);
-      await Promise.all(sessionManager.list().map(async (session) => {
-        const agents = session.accessor.get(IAgentLifecycleService);
-        for (const agent of agents.list()) {
-          try {
-            await agents.remove(agent);
-          } catch (error) {
-            core.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
-              sessionId: session.id,
-              agentId: agent.agentId,
-              error,
-            });
+      await Promise.all(sessionManager.list().map((session) =>
+        sessionManager.withLifecycleSerialization(session.id, async () => {
+          const current = sessionManager.get(session.id);
+          if (current === undefined) return;
+          const agents = current.accessor.get(IAgentLifecycleService);
+          for (const agent of agents.list()) {
+            try {
+              await agents.remove(agent);
+            } catch (error) {
+              core.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
+                sessionId: current.id,
+                agentId: agent.agentId,
+                error,
+              });
+            }
           }
-        }
-      }));
+        }),
+      ));
       // Flush the append-log write-behind before disposing, so a clean shutdown
       // never races a pending drain against teardown (and doesn't drop the last
       // persisted ops). Best-effort: a flush failure must not block disposal.

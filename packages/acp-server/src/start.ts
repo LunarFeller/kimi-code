@@ -194,13 +194,17 @@ export async function runAcpServerWithStream(
       await klient.close();
       const sessionManager = core.accessor.get(ISessionManager);
       await Promise.all(sessionManager.list().map(async (session) => {
-        try {
-          await sessionManager.close(session.id);
-        } catch (error) {
-          core.accessor.get(ILogService).warn('session close failed; continuing shutdown', {
-            sessionId: session.id,
-            error,
-          });
+        const agents = session.accessor.get(IAgentLifecycleService);
+        for (const agent of agents.list()) {
+          try {
+            await agents.remove(agent);
+          } catch (error) {
+            core.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
+              sessionId: session.id,
+              agentId: agent.agentId,
+              error,
+            });
+          }
         }
       }));
       // Flush the append-log write-behind before disposing, so a clean shutdown

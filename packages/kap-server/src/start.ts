@@ -6,6 +6,7 @@ import {
   drainLogCloses,
   ConfigWarning,
   CapabilityChanged,
+  IAgentLifecycleService,
   IAppendLogStore,
   IConfigService,
   IEventService,
@@ -348,10 +349,16 @@ export async function startServer(opts: ServerStartOptions): Promise<RunningServ
     await sessionIdleReaper.close();
     const sessionManager = core.accessor.get(ISessionManager);
     await Promise.all(sessionManager.list().map(async (session) => {
-      try {
-        await sessionManager.close(session.id);
-      } catch (error) {
-        logger.warn({ err: error, sessionId: session.id }, 'session close failed; continuing shutdown');
+      const agents = session.accessor.get(IAgentLifecycleService);
+      for (const agent of agents.list()) {
+        try {
+          await agents.remove(agent);
+        } catch (error) {
+          logger.warn(
+            { err: error, sessionId: session.id, agentId: agent.agentId },
+            'agent removal failed; continuing shutdown',
+          );
+        }
       }
     }));
     try {

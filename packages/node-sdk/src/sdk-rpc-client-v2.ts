@@ -141,6 +141,7 @@ import {
   drainLogCloses,
   drainQueryStoreDisposals,
   drainSessionIndexMirror,
+  drainSessionMetadataWrites,
   ensureKimiHome,
   ensureMainAgent,
   getOrRestoreAgent,
@@ -525,19 +526,24 @@ export class SDKRpcClientV2 extends SDKRpcClientBase {
     await this.klient.close();
     const sessionManager = this.app.accessor.get(ISessionManager);
     await Promise.all(sessionManager.list().map(async (session) => {
-      try {
-        await sessionManager.close(session.id);
-      } catch (error) {
-        this.app.accessor.get(ILogService).warn('session close failed; continuing shutdown', {
-          sessionId: session.id,
-          error,
-        });
+      const agents = session.accessor.get(IAgentLifecycleService);
+      for (const agent of agents.list()) {
+        try {
+          await agents.remove(agent);
+        } catch (error) {
+          this.app.accessor.get(ILogService).warn('agent removal failed; continuing shutdown', {
+            sessionId: session.id,
+            agentId: agent.agentId,
+            error,
+          });
+        }
       }
     }));
     // Same shutdown order as kap-server: drain the session-index mirror while
     // the query store is still open, then await the asynchronous closes that
     // disposal fires — a host that removes homeDir right after close() must
     // not race an in-flight shard close (ENOTEMPTY on teardown).
+    await drainSessionMetadataWrites();
     await this.app.accessor.get(ISessionIndexMirror).drain();
     // Await the OAuth service shutdown directly rather than after dispose():
     // its ledger-teardown dispose can queue behind slow async disposables, and
@@ -550,6 +556,7 @@ export class SDKRpcClientV2 extends SDKRpcClientBase {
     await appendLogStore.drainRetirements();
     await drainSessionIndexMirror();
     await drainQueryStoreDisposals();
+    await drainSessionMetadataWrites();
     await drainLogCloses();
   }
 

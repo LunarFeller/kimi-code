@@ -579,6 +579,13 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         state.recovery = recovery;
         recovery.attempts++;
         this.scheduleRecovery(scope, key, state);
+      } else {
+        this.logger.warn('automatic append-log recovery stopped; buffered records remain in memory', {
+          scope,
+          key,
+          pending: state.pending.length,
+          error,
+        });
       }
     }
   }
@@ -597,7 +604,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
       if (prefix === undefined || prefix.length !== failure.failedAtSize) {
         throw new StorageError(
           StorageErrors.codes.STORAGE_CORRUPTED,
-          'append-log recovery aborted: guarded log has no trusted original prefix',
+          'append-log recovery aborted: trusted failure-time prefix or end evidence is unavailable',
           { details: { scope, key } },
         );
       }

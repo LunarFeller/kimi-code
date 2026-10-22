@@ -1261,6 +1261,7 @@ describe('AppendLogStore', () => {
     );
 
     it('defers partial-append recovery while the session write guard declines', async () => {
+      const warn = vi.spyOn(ix.get(ILogService), 'warn');
       await collect(SCOPE, KEY);
       const failure = diskFull();
       const reported = deferred<unknown>();
@@ -1296,10 +1297,12 @@ describe('AppendLogStore', () => {
         '{"n":1,"text":"中文"}\n{"n":2}\n',
       );
       expect(recovered).toHaveBeenCalledOnce();
+      expect(warn).not.toHaveBeenCalled();
       binding.dispose();
     });
 
     it('keeps recovery scheduled when its write guard declines during reconciliation', async () => {
+      const warn = vi.spyOn(ix.get(ILogService), 'warn');
       await collect(SCOPE, KEY);
       const failure = diskFull();
       const reported = deferred<unknown>();
@@ -1329,6 +1332,7 @@ describe('AppendLogStore', () => {
 
       expect(attempts).toBe(2);
       expect(new TextDecoder().decode(await storage.read(SCOPE, KEY))).toBe('{"n":1}\n');
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('recognizes repeated partial suffix failures without trusting uncommitted bytes', async () => {
@@ -2497,6 +2501,7 @@ describe('AppendLogStore', () => {
     });
 
     it('re-enters backoff with a growing delay when the recovery attempt itself hits disk-full', async () => {
+      const warn = vi.spyOn(ix.get(ILogService), 'warn');
       const failure = diskFull();
       let attempts = 0;
       const originalAppend = storage.append.bind(storage);
@@ -2528,6 +2533,7 @@ describe('AppendLogStore', () => {
 
       expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 1 }]);
       expect(attempts).toBe(3);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('close() makes a final recovery attempt and persists buffered records', async () => {
@@ -2818,6 +2824,7 @@ describe('AppendLogStore', () => {
       { phase: 'fully committed append', changed: false },
       { phase: 'fully committed append', changed: true },
     ])('validates the guarded prefix after $phase fails with same-length modification=$changed', async ({ phase, changed }) => {
+      const warn = vi.spyOn(ix.get(ILogService), 'warn');
       const seed = enc.encode('{"n":0}\n');
       await storage.append(SCOPE, KEY, seed);
       await collect(SCOPE, KEY);
@@ -2864,6 +2871,15 @@ describe('AppendLogStore', () => {
         expect.soft(appended).toHaveLength(attemptsBefore);
         expect.soft(recovered).not.toHaveBeenCalled();
         expect.soft(await storage.read(SCOPE, KEY)).toEqual(foreign);
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          'automatic append-log recovery stopped; buffered records remain in memory',
+          {
+            scope: SCOPE,
+            key: KEY,
+            pending: 1,
+            error: expect.objectContaining({ message: 'append-log recovery aborted: original prefix was modified' }),
+          },
+        );
       } else {
         await record.flush();
         expect(new TextDecoder().decode(await storage.read(SCOPE, KEY))).toBe('{"n":0}\n{"n":1}\n');
@@ -2871,11 +2887,80 @@ describe('AppendLogStore', () => {
           ? [enc.encode('{"n":1}\n')]
           : [enc.encode('{"n":1}\n'), new Uint8Array()]);
         expect(recovered).toHaveBeenCalledExactlyOnceWith({ scope: SCOPE, key: KEY });
+        expect(warn).not.toHaveBeenCalled();
       }
       expect(leases.active.size).toBe(0);
       expect(leases.leases).toEqual([{ disposeCalls: 1 }, { disposeCalls: 1 }]);
       expect(activeDuringReads.every((active) => active === 1)).toBe(true);
     });
+
+    it.each(['prefix read', 'end observation'] as const)(
+      'reports stopped recovery once when the original %s is unavailable without external writes',
+      async (phase) => {
+        const seed = enc.encode('{"n":0}\n');
+        await storage.append(SCOPE, KEY, seed);
+        await collect(SCOPE, KEY);
+        disposables.add(record.bindWriteGuard(SCOPE, KEY, () => true));
+        const failure = diskFull();
+        const unavailable = new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'temporary evidence read failure');
+        const originalAppend = storage.append.bind(storage);
+        const originalSize = storage.size.bind(storage);
+        const originalSizeSync = storage.sizeSync.bind(storage);
+        const originalReadStream = storage.readStream.bind(storage);
+        let evidenceUnavailable = false;
+        let appendFailed = false;
+        storage.append = async (...args) => {
+          if (!appendFailed) {
+            appendFailed = true;
+            evidenceUnavailable = true;
+            throw failure;
+          }
+          return originalAppend(...args);
+        };
+        storage.size = async (...args) => {
+          if (phase === 'end observation' && evidenceUnavailable) throw unavailable;
+          return originalSize(...args);
+        };
+        storage.sizeSync = (...args) => {
+          if (phase === 'end observation' && evidenceUnavailable) throw unavailable;
+          return originalSizeSync(...args);
+        };
+        storage.readStream = async function* (...args) {
+          if (phase === 'prefix read' && evidenceUnavailable) throw unavailable;
+          yield* originalReadStream(...args);
+        };
+        const warn = vi.spyOn(ix.get(ILogService), 'warn');
+        const reported = deferred<unknown>();
+        const onError = vi.fn(reported.resolve);
+        record.append(SCOPE, KEY, { n: 1 }, { onError });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        expect(warn).not.toHaveBeenCalled();
+        evidenceUnavailable = false;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        await expect(record.flush()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          'automatic append-log recovery stopped; buffered records remain in memory',
+          {
+            scope: SCOPE,
+            key: KEY,
+            pending: 2,
+            error: expect.objectContaining({
+              message: 'append-log recovery aborted: trusted failure-time prefix or end evidence is unavailable',
+            }),
+          },
+        );
+        expect(await storage.read(SCOPE, KEY)).toEqual(seed);
+        await expect(record.close()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+        await expect(record.close()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+        disposables.dispose();
+        await record.drainRetirements();
+        expect(warn).toHaveBeenCalledOnce();
+        expect(onError).toHaveBeenCalledExactlyOnceWith(failure);
+      },
+    );
 
     it.each(['before append', 'fully committed append'] as const)(
       'does not replace a failed guarded prefix capture with a fresh baseline after %s fails',
@@ -3057,6 +3142,7 @@ describe('AppendLogStore', () => {
     it.each(['different size', 'stat failure'] as const)(
       'rewrite supersedes guarded boundary-stat recovery awaiting a %s',
       async (result) => {
+        const warn = vi.spyOn(ix.get(ILogService), 'warn');
         await storage.append(SCOPE, KEY, enc.encode('{"n":0}\n'));
         await collect(SCOPE, KEY);
         disposables.add(record.bindWriteGuard(SCOPE, KEY, () => true));
@@ -3097,10 +3183,12 @@ describe('AppendLogStore', () => {
         );
         expect(record.externallyModified(SCOPE, KEY)).toBe(false);
         expect(recovered).not.toHaveBeenCalled();
+        expect(warn.mock.calls.filter(([message]) => message.startsWith('automatic append-log recovery stopped'))).toEqual([]);
       },
     );
 
     it('becomes sticky when a recovery attempt hits a non-retryable error', async () => {
+      const warn = vi.spyOn(ix.get(ILogService), 'warn');
       const permanent = new StorageError(
         StorageErrors.codes.STORAGE_PERMISSION_DENIED,
         'storage append failed: permission denied',
@@ -3129,6 +3217,10 @@ describe('AppendLogStore', () => {
 
       expect(attempts).toBe(2);
       await expect(record.flush()).rejects.toBe(permanent);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        'automatic append-log recovery stopped; buffered records remain in memory',
+        { scope: SCOPE, key: KEY, pending: 1, error: permanent },
+      );
     });
 
     it.each([

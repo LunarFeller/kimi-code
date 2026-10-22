@@ -10,12 +10,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   IAppendLogStore,
   IAgentLifecycleService,
+  IAgentTaskService,
+  IAtomicDocumentStore,
   IBootstrapService,
+  IExternalHooksRunnerService,
   IFileSystemStorageService,
   IHostRequestHeaders,
   ILogService,
   ISessionLockService,
   ISessionManager,
+  ISessionContext,
+  ISessionIndexMirror,
+  ISessionMetadata,
   IWireService,
   InMemoryStorageService,
   IOAuthToolkit,
@@ -353,19 +359,35 @@ describe('server-v2 boot', () => {
     },
   );
 
-  it('drains an accepted wire dehydrator before close allows home removal', async () => {
+  it.each([false, true])('drains an accepted wire dehydrator before close allows home removal when an earlier agent fails: %s', async (stopFails) => {
     home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-dehydrate-close-'));
+    const logger = pino({ level: 'silent' });
+    const warning = vi.spyOn(logger, 'warn');
     server = await startServer({
       hostIdentity: TEST_HOST_IDENTITY,
       host: '127.0.0.1',
       port: 0,
       homeDir: home,
       logLevel: 'silent',
+      logger,
     });
     const session = await server.core.accessor.get(ISessionManager).create({ workDir: home });
     const agents = session.accessor.get(IAgentLifecycleService);
     await agents.create({ agentId: 'main' });
-    const wire = agents.handleOf('main')!.accessor.get(IWireService);
+    if (stopFails) {
+      await agents.create({ agentId: 'aux' });
+      vi.spyOn(agents.handleOf('main')!.accessor.get(IAgentTaskService), 'stopAllOnExit')
+        .mockRejectedValue(new Error('stop failed'));
+    }
+    const wire = agents.handleOf(stopFails ? 'aux' : 'main')!.accessor.get(IWireService);
+    const removed = vi.spyOn(agents, 'remove');
+    const hooks = vi.spyOn(server.core.accessor.get(IExternalHooksRunnerService), 'trigger');
+    const sessionClosed = vi.fn();
+    server.core.accessor.get(ISessionManager).onDidCloseSession!(sessionClosed);
+    const telemetryEvents: string[] = [];
+    const telemetry = server.core.accessor.get(ITelemetryService);
+    telemetry.setEnabled(true);
+    telemetry.addAppender({ track: (record) => { telemetryEvents.push(record.event); } });
     await server.core.accessor.get(IAppendLogStore).flush();
     const path = wire.journalPath()!;
     const baseline = await readFile(path);
@@ -403,10 +425,20 @@ describe('server-v2 boot', () => {
       await closing;
       server = undefined;
       expect.soft(unexpected).toEqual([]);
-      expect(await readFile(path)).toEqual(Buffer.concat([
+      expect.soft(await readFile(path)).toEqual(Buffer.concat([
         baseline,
         Buffer.from(JSON.stringify(record) + '\n'),
       ]));
+      expect(removed.mock.calls.map(([agent]) => agent.agentId)).toEqual(stopFails ? ['main', 'aux'] : ['main']);
+      expect(hooks.mock.calls.filter(([event]) => event === 'SessionEnd')).toEqual([]);
+      expect(sessionClosed).not.toHaveBeenCalled();
+      expect(telemetryEvents).not.toContain('session_ended');
+      if (stopFails) {
+        expect(warning).toHaveBeenCalledWith(
+          { err: expect.objectContaining({ message: 'stop failed' }), sessionId: session.id, agentId: 'main' },
+          'agent removal failed; continuing shutdown',
+        );
+      }
       const appendsAtClose = appendSpy.mock.calls.length;
       const writesAtClose = writeSpy.mock.calls.length;
       await rm(home, { recursive: true, force: true });
@@ -424,6 +456,52 @@ describe('server-v2 boot', () => {
       appendSpy.mockRestore();
       writeSpy.mockRestore();
     }
+  });
+
+  it('settles session metadata before draining the session-index mirror on shutdown', async () => {
+    home = await mkdtemp(join(tmpdir(), 'kimi-server-v2-metadata-close-'));
+    server = await startServer({
+      hostIdentity: TEST_HOST_IDENTITY,
+      host: '127.0.0.1',
+      port: 0,
+      homeDir: home,
+      logLevel: 'silent',
+    });
+    const session = await server.core.accessor.get(ISessionManager).create({ workDir: home });
+    const context = session.accessor.get(ISessionContext);
+    const documents = server.core.accessor.get(IAtomicDocumentStore);
+    const set = documents.set.bind(documents);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const writing = new Promise<void>((resolve) => { started = resolve; });
+    const write = vi.spyOn(documents, 'set').mockImplementation(async (scope, key, value) => {
+      if (scope === context.metaScope && key === 'state.json') {
+        started();
+        await gate;
+      }
+      await set(scope, key, value);
+    });
+    const mirror = server.core.accessor.get(ISessionIndexMirror);
+    const drain = vi.spyOn(mirror, 'drain');
+    const record = vi.spyOn(mirror, 'record');
+    const updating = session.accessor.get(ISessionMetadata).setTitle('Metadata before shutdown');
+    await writing;
+    let closed = false;
+    const closing = server.close().then(() => { closed = true; });
+    try {
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect.soft(closed).toBe(false);
+      expect.soft(drain).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await updating;
+      await closing;
+      server = undefined;
+      write.mockRestore();
+    }
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ title: 'Metadata before shutdown' }));
+    expect(drain).toHaveBeenCalled();
   });
 
   it.each(['shutdown', 'automatic'] as const)(

@@ -45,6 +45,7 @@ import {
   IAgentIdentity,
   IAgentTodoService,
   IAgentLifecycleService,
+  IAgentTaskService,
   IAgentProfileService,
   IAgentConversationUndoService,
   IAgentFullCompactionService,
@@ -56,12 +57,17 @@ import {
   INotifyUserTool,
   IAtomicDocumentStore,
   IFileSystemStorageService,
+  IExternalHooksRunnerService,
   ISessionContext,
   IAgentTowerService,
   IHostRequestHeaders,
+  ILogService,
   IMcpManagementService,
   IMcpOAuthService,
   ISessionManager,
+  ISessionIndexMirror,
+  ISessionMetadata,
+  ITelemetryService,
   IWireService,
   MAIN_AGENT_ID,
   OsProcessErrors,
@@ -465,7 +471,7 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
     }
   });
 
-  it('close() waits for accepted wire records whose asynchronous dehydration is still running', async () => {
+  it.each([false, true])('close() waits for accepted wire dehydration when an earlier agent fails: %s', async (stopFails) => {
     const homeDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-'));
     const workDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-work-'));
     tempDirs.push(homeDir, workDir);
@@ -485,7 +491,21 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
       if (agents.handleOf(MAIN_AGENT_ID) === undefined) {
         await agents.create({ agentId: MAIN_AGENT_ID });
       }
-      wire = agents.handleOf(MAIN_AGENT_ID)!.accessor.get(IWireService);
+      if (stopFails) {
+        await agents.create({ agentId: 'aux' });
+        vi.spyOn(agents.handleOf(MAIN_AGENT_ID)!.accessor.get(IAgentTaskService), 'stopAllOnExit')
+          .mockRejectedValue(new Error('stop failed'));
+      }
+      wire = agents.handleOf(stopFails ? 'aux' : MAIN_AGENT_ID)!.accessor.get(IWireService);
+      const removed = vi.spyOn(agents, 'remove');
+      const warning = vi.spyOn(client.engineAccessor.get(ILogService), 'warn');
+      const hooks = vi.spyOn(client.engineAccessor.get(IExternalHooksRunnerService), 'trigger');
+      const sessionClosed = vi.fn();
+      client.engineAccessor.get(ISessionManager).onDidCloseSession!(sessionClosed);
+      const telemetryEvents: string[] = [];
+      const telemetry = client.engineAccessor.get(ITelemetryService);
+      telemetry.setEnabled(true);
+      telemetry.addAppender({ track: (record) => { telemetryEvents.push(record.event); } });
       await wire.flush();
       const wirePath = wire.journalPath()!;
       const appended = vi.spyOn(client.engineAccessor.get(IFileSystemStorageService), 'append');
@@ -515,6 +535,17 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
         type: 'test.shutdown.marker',
         marker: 'dehydrated-before-close',
       }]);
+      expect(removed.mock.calls.map(([agent]) => agent.agentId)).toEqual(stopFails ? [MAIN_AGENT_ID, 'aux'] : [MAIN_AGENT_ID]);
+      expect(hooks.mock.calls.filter(([event]) => event === 'SessionEnd')).toEqual([]);
+      expect(sessionClosed).not.toHaveBeenCalled();
+      expect(telemetryEvents).not.toContain('session_ended');
+      if (stopFails) {
+        expect(warning).toHaveBeenCalledWith('agent removal failed; continuing shutdown', {
+          sessionId: session.id,
+          agentId: MAIN_AGENT_ID,
+          error: expect.objectContaining({ message: 'stop failed' }),
+        });
+      }
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(appended).toHaveBeenCalledTimes(writesAtClose);
       expect(await readFile(wirePath, 'utf8')).toBe(bytes);
@@ -529,6 +560,56 @@ describe('SDKRpcClientV2 (agent-core-v2 wiring)', () => {
         restoreAppend();
         resetUnexpectedErrorHandler();
       }
+    }
+  });
+
+  it('close() settles session metadata before draining the session-index mirror', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-metadata-close-'));
+    const workDir = await mkdtemp(join(tmpdir(), 'kimi-sdk-v2-work-'));
+    tempDirs.push(homeDir, workDir);
+    const client = new SDKRpcClientV2({ homeDir, identity: TEST_IDENTITY });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const writing = new Promise<void>((resolve) => { started = resolve; });
+    let closing: Promise<void> | undefined;
+    let updating: Promise<void> | undefined;
+    let restoreWrite = () => {};
+    try {
+      await client.createSession({ id: 'ses_shutdown_metadata', workDir });
+      const session = getLiveSessionById(client.engineAccessor, 'ses_shutdown_metadata')!;
+      const context = session.accessor.get(ISessionContext);
+      const documents = client.engineAccessor.get(IAtomicDocumentStore);
+      const set = documents.set.bind(documents);
+      const write = vi.spyOn(documents, 'set').mockImplementation(async (scope, key, value) => {
+        if (scope === context.metaScope && key === 'state.json') {
+          started();
+          await gate;
+        }
+        await set(scope, key, value);
+      });
+      restoreWrite = () => { write.mockRestore(); };
+      const mirror = client.engineAccessor.get(ISessionIndexMirror);
+      const drain = vi.spyOn(mirror, 'drain');
+      const record = vi.spyOn(mirror, 'record');
+      updating = session.accessor.get(ISessionMetadata).setTitle('Metadata before shutdown');
+      await writing;
+      let closed = false;
+      closing = client.close().then(() => { closed = true; });
+      await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, 100))]);
+      expect.soft(closed).toBe(false);
+      expect.soft(drain).not.toHaveBeenCalled();
+      release();
+      await updating;
+      await closing;
+      expect(record).toHaveBeenCalledWith(expect.objectContaining({ title: 'Metadata before shutdown' }));
+      expect(drain).toHaveBeenCalled();
+    } finally {
+      release();
+      await updating;
+      if (closing !== undefined) await closing;
+      else await client.close();
+      restoreWrite();
     }
   });
 

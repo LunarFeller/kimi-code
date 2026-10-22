@@ -64,7 +64,7 @@ interface LogState {
   flushScheduled: boolean;
   storageFailure: { readonly error: unknown } | undefined;
   recovery: RecoveryState | undefined;
-  recoveryPrefix: { readonly length: number; readonly hash: Hash } | undefined;
+  recoveryPrefix: { readonly length: number; readonly hash: Hash; readonly observedLength: number } | undefined;
   recoveryPromise: Promise<void> | undefined;
   failureWarned: boolean;
   stuckWatch: NodeJS.Timeout | undefined;
@@ -654,6 +654,13 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         }
       }
     }
+    if (prefix !== undefined && (size ?? 0) !== prefix.observedLength) {
+      throw new StorageError(
+        StorageErrors.codes.STORAGE_CORRUPTED,
+        'append-log recovery aborted: observed failed append length changed',
+        { details: { scope, key } },
+      );
+    }
     const committed = (size ?? 0) - boundary;
     if (committed > encoded.byteLength) {
       throw new StorageError(
@@ -695,10 +702,23 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
     try {
       await this.storage.append(scope, key, remaining, { durable: true });
     } catch (error) {
+      let sizeAfter: number | undefined;
       if (state.cutoverEpoch === epoch && state.knownLength !== undefined) {
-        const sizeAfter = this.diskLength(scope, key);
+        sizeAfter = this.diskLength(scope, key);
         if (sizeAfter !== undefined) {
           state.knownLength += Math.min(remaining.byteLength, Math.max(0, sizeAfter - (size ?? 0)));
+        }
+      }
+      if (state.cutoverEpoch === epoch && prefix !== undefined) {
+        try {
+          const observedLength = sizeAfter ?? (await this.storage.size(scope, key)) ?? 0;
+          if (state.cutoverEpoch === epoch) {
+            state.recoveryPrefix = observedLength >= (size ?? 0) && observedLength <= boundary + encoded.byteLength
+              ? { ...prefix, observedLength }
+              : undefined;
+          }
+        } catch {
+          if (state.cutoverEpoch === epoch) state.recoveryPrefix = undefined;
         }
       }
       throw error;
@@ -710,6 +730,7 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
         state.recoveryPrefix = {
           length: prefix.length + encoded.byteLength,
           hash: prefix.hash.copy().update(encoded),
+          observedLength: boundary + encoded.byteLength,
         };
       }
       state.knownLength = failure.knownAtSize === undefined
@@ -859,13 +880,15 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
           state.recoveryPrefix = {
             length: state.recoveryPrefix.length + encoded.byteLength,
             hash: state.recoveryPrefix.hash.copy().update(encoded),
+            observedLength: state.recoveryPrefix.length + encoded.byteLength,
           };
         }
         if (wroteBox !== undefined) wroteBox.value = true;
       } catch (error) {
         state.inFlightBytes = 0;
+        let sizeAfter: number | undefined;
         if (failure.kind === 'append' && state.cutoverEpoch === cutoverEpoch && state.knownLength !== undefined) {
-          const sizeAfter = this.diskLength(scope, key);
+          sizeAfter = this.diskLength(scope, key);
           if (sizeAfter !== undefined) {
             state.knownLength += Math.min(encoded.length, Math.max(0, sizeAfter - failure.failedAtSize));
           }
@@ -881,9 +904,14 @@ export class AppendLogStore extends Disposable implements IAppendLogStore {
           const guard = state.retired ? state.retirementGuard : this.writeGuards.get(logId(scope, key));
           if (guard !== undefined && failure.failedAtSize !== undefined) {
             try {
-              const hash = await this.hashPrefix(scope, key, failure.failedAtSize);
+              const observedLength = failure.kind === 'append'
+                ? sizeAfter ?? (await this.storage.size(scope, key)) ?? 0
+                : failure.failedAtSize;
               if (state.cutoverEpoch === cutoverEpoch) {
-                state.recoveryPrefix = { length: failure.failedAtSize, hash };
+                const hash = await this.hashPrefix(scope, key, failure.failedAtSize);
+                if (state.cutoverEpoch === cutoverEpoch) {
+                  state.recoveryPrefix = { length: failure.failedAtSize, hash, observedLength };
+                }
               }
             } catch {}
           }

@@ -8,12 +8,14 @@ import { SyncDescriptor } from '#/_base/di/descriptors';
 import { DisposableStore } from '#/_base/di/lifecycle';
 import { TestInstantiationService } from '#/_base/di/test';
 import { ILogService } from '#/_base/log/log';
+import type { IBootstrapService } from '#/app/bootstrap/bootstrap';
 import { AppendLogCorruptedError, IAppendLogStore, type AppendLogTruncation } from '#/persistence/interface/appendLogStore';
 import { ISessionLockService } from '#/persistence/interface/sessionLock';
 import { IFileSystemStorageService, StorageError, StorageErrors } from '#/persistence/interface/storage';
 import { InMemorySessionLockService } from '#/persistence/backends/memory/sessionLockService';
 import { AppendLogStore } from '#/persistence/backends/node-fs/appendLogStore';
 import { FileStorageService } from '#/persistence/backends/node-fs/fileStorageService';
+import { SessionLockService } from '#/persistence/backends/node-fs/sessionLockService';
 import { InMemoryStorageService } from '#/persistence/backends/memory/inMemoryStorageService';
 
 import { stubLog } from '../../../_base/log/stubs';
@@ -2284,6 +2286,89 @@ describe('AppendLogStore', () => {
       },
     );
 
+    it.each(['resolve', 'reject'] as const)(
+      'rewrite invalidates a pending failed-recovery end observation that will %s',
+      async (outcome) => {
+        await storage.append(SCOPE, KEY, enc.encode('{"n":0}\n'));
+        await collect(SCOPE, KEY);
+        const leases = trackWriteLeases();
+        disposables.add(record.bindWriteGuard(SCOPE, KEY, leases.guard));
+        const failure = diskFull();
+        const reported = deferred<unknown>();
+        const observing = deferred<void>();
+        const gate = deferred<void>();
+        const recovered = vi.fn();
+        disposables.add(record.onDidRecover(recovered));
+        const originalAppend = storage.append.bind(storage);
+        const originalSize = storage.size.bind(storage);
+        const originalSizeSync = storage.sizeSync.bind(storage);
+        let attempts = 0;
+        let failSyncObservation = false;
+        let failedSyncObservations = 0;
+        const append = vi.spyOn(storage, 'append').mockImplementation(async (scope, key, data, options) => {
+          attempts++;
+          if (attempts <= 2) {
+            await originalAppend(scope, key, data.subarray(0, attempts === 1 ? 9 : 2), options);
+            if (attempts === 2) failSyncObservation = true;
+            throw failure;
+          }
+          return originalAppend(scope, key, data, options);
+        });
+        storage.sizeSync = (...args) => {
+          if (failSyncObservation) {
+            failSyncObservation = false;
+            failedSyncObservations++;
+            throw new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'sync end observation unavailable');
+          }
+          return originalSizeSync(...args);
+        };
+        let observationBlocked = false;
+        storage.size = async (...args) => {
+          if (attempts === 2 && !observationBlocked) {
+            observationBlocked = true;
+            observing.resolve();
+            await gate.promise;
+            if (outcome === 'reject') {
+              throw new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'failed end observation');
+            }
+          }
+          return originalSize(...args);
+        };
+        const write = vi.spyOn(storage, 'write');
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        const recovering = vi.advanceTimersByTimeAsync(1000);
+        await observing.promise;
+        expect(failedSyncObservations).toBe(1);
+
+        let rewritten = false;
+        const rewriting = record.rewrite(SCOPE, KEY, [{ n: 9 }]).then(() => { rewritten = true; });
+        record.append(SCOPE, KEY, { n: 3 });
+        let closed = false;
+        const closing = record.close().then(() => { closed = true; });
+        await settle();
+        expect(rewritten).toBe(false);
+        expect(closed).toBe(false);
+        expect(leases.active.size).toBe(1);
+        gate.resolve();
+        await Promise.all([recovering, rewriting, closing]);
+
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 9 }, { n: 1 }, { n: 2 }, { n: 3 }]);
+        expect(new TextDecoder().decode(await storage.read(SCOPE, KEY))).toBe(
+          '{"n":9}\n{"n":1}\n{"n":2}\n{"n":3}\n',
+        );
+        expect(recovered).not.toHaveBeenCalled();
+        expect(leases.active.size).toBe(0);
+        const appendsAtClose = append.mock.calls.length;
+        const writesAtClose = write.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(append).toHaveBeenCalledTimes(appendsAtClose);
+        expect(write).toHaveBeenCalledTimes(writesAtClose);
+        expect(recovered).not.toHaveBeenCalled();
+      },
+    );
+
     it.each(['tail read', 'suffix append', 'partial suffix failure'] as const)(
       'close and retirement wait for a running recovery during %s',
       async (phase) => {
@@ -3046,6 +3131,212 @@ describe('AppendLogStore', () => {
       await expect(record.flush()).rejects.toBe(permanent);
     });
 
+    it.each([
+      { phase: 'zero-byte initial failure', cuts: [0] },
+      { phase: 'one committed event from the initial batch', cuts: [8] },
+      { phase: 'a second partial append during recovery', cuts: [1, 7] },
+    ])('rejects matching foreign bytes appended after $phase', async ({ cuts }) => {
+      const seed = enc.encode('{"n":0}\n');
+      const batch = enc.encode('{"n":1}\n{"n":2}\n');
+      await storage.append(SCOPE, KEY, seed);
+      await collect(SCOPE, KEY);
+      const leases = trackWriteLeases();
+      disposables.add(record.bindWriteGuard(SCOPE, KEY, leases.guard));
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const recovered = vi.fn();
+      disposables.add(record.onDidRecover(recovered));
+      const originalAppend = storage.append.bind(storage);
+      const appended: Uint8Array[] = [];
+      storage.append = async (scope, key, data, options) => {
+        appended.push(data.slice());
+        const cut = cuts[appended.length - 1];
+        if (cut !== undefined) {
+          await originalAppend(scope, key, data.subarray(0, cut), options);
+          throw failure;
+        }
+        return originalAppend(scope, key, data, options);
+      };
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      record.append(SCOPE, KEY, { n: 2 });
+      expect(await reported.promise).toBe(failure);
+      if (cuts.length > 1) await vi.advanceTimersByTimeAsync(1000);
+      await expect(record.flush()).rejects.toBe(failure);
+      expect(leases.active.size).toBe(0);
+      const committed = cuts.reduce((sum, cut) => sum + cut, 0);
+      expect(await storage.read(SCOPE, KEY)).toEqual(new Uint8Array([...seed, ...batch.subarray(0, committed)]));
+      await originalAppend(SCOPE, KEY, batch.subarray(committed));
+      const foreign = await storage.read(SCOPE, KEY);
+      const attempts = appended.length;
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect.soft(record.flush()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+      expect.soft(recovered).not.toHaveBeenCalled();
+      expect.soft(appended).toHaveLength(attempts);
+      expect.soft(await storage.read(SCOPE, KEY)).toEqual(foreign);
+      expect.soft(record.externallyModified(SCOPE, KEY)).toBe(true);
+      expect(leases.active.size).toBe(0);
+    });
+
+    it('rejects a guarded failed append whose observed tail was truncated', async () => {
+      const seed = enc.encode('{"n":0}\n');
+      const batch = enc.encode('{"n":1}\n{"n":2}\n');
+      await storage.append(SCOPE, KEY, seed);
+      await collect(SCOPE, KEY);
+      const leases = trackWriteLeases();
+      disposables.add(record.bindWriteGuard(SCOPE, KEY, leases.guard));
+      const failure = diskFull();
+      const reported = deferred<unknown>();
+      const recovered = vi.fn();
+      disposables.add(record.onDidRecover(recovered));
+      const originalAppend = storage.append.bind(storage);
+      const append = vi.spyOn(storage, 'append').mockImplementationOnce(async (scope, key, data, options) => {
+        await originalAppend(scope, key, data.subarray(0, 8), options);
+        throw failure;
+      }).mockImplementation(originalAppend);
+      record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+      record.append(SCOPE, KEY, { n: 2 });
+      expect(await reported.promise).toBe(failure);
+      expect(leases.active.size).toBe(0);
+      const truncated = new Uint8Array([...seed, ...batch.subarray(0, 7)]);
+      await storage.write(SCOPE, KEY, truncated);
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect.soft(record.flush()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+      expect.soft(recovered).not.toHaveBeenCalled();
+      expect.soft(append).toHaveBeenCalledTimes(1);
+      expect.soft(await storage.read(SCOPE, KEY)).toEqual(truncated);
+      expect(leases.active.size).toBe(0);
+    });
+
+    it.each(['initial append', 'recovery append'] as const)(
+      'does not reuse or recapture the guarded end after its %s observation fails',
+      async (phase) => {
+        const seed = enc.encode('{"n":0}\n');
+        const batch = enc.encode('{"n":1}\n{"n":2}\n');
+        await storage.append(SCOPE, KEY, seed);
+        await collect(SCOPE, KEY);
+        const leases = trackWriteLeases();
+        disposables.add(record.bindWriteGuard(SCOPE, KEY, leases.guard));
+        const failure = diskFull();
+        const observationFailure = new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'failed append end is unreadable');
+        const reported = deferred<unknown>();
+        const recovered = vi.fn();
+        disposables.add(record.onDidRecover(recovered));
+        const originalAppend = storage.append.bind(storage);
+        const originalSize = storage.size.bind(storage);
+        const originalSizeSync = storage.sizeSync.bind(storage);
+        let observationUnavailable = false;
+        let failedObservations = 0;
+        storage.size = async (...args) => {
+          if (observationUnavailable && leases.active.size > 0) {
+            failedObservations++;
+            throw observationFailure;
+          }
+          return originalSize(...args);
+        };
+        storage.sizeSync = (...args) => {
+          if (observationUnavailable && leases.active.size > 0) {
+            failedObservations++;
+            throw observationFailure;
+          }
+          return originalSizeSync(...args);
+        };
+        let attempts = 0;
+        storage.append = async (scope, key, data, options) => {
+          attempts++;
+          if (attempts === 1 || (phase === 'recovery append' && attempts === 2)) {
+            await originalAppend(scope, key, data.subarray(0, attempts === 1 ? 3 : 2), options);
+            observationUnavailable = phase === 'initial append' || attempts === 2;
+            throw failure;
+          }
+          return originalAppend(scope, key, data, options);
+        };
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        if (phase === 'recovery append') await vi.advanceTimersByTimeAsync(1000);
+        expect(failedObservations).toBeGreaterThan(0);
+        expect(leases.active.size).toBe(0);
+        observationUnavailable = false;
+        const foreign = new Uint8Array([...seed, ...batch.subarray(0, 3)]);
+        await storage.write(SCOPE, KEY, foreign);
+        const attemptsBefore = attempts;
+
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        await expect.soft(record.flush()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+        expect.soft(recovered).not.toHaveBeenCalled();
+        expect.soft(attempts).toBe(attemptsBefore);
+        expect.soft(await storage.read(SCOPE, KEY)).toEqual(foreign);
+        expect(leases.active.size).toBe(0);
+      },
+    );
+
+    it.each(['initial append', 'recovery append'] as const)(
+      'keeps a successful synchronous end observation after %s when async stat is unavailable in that lease',
+      async (phase) => {
+        const seed = enc.encode('{"n":0}\n');
+        const batch = enc.encode('{"n":1}\n{"n":2}\n');
+        await storage.append(SCOPE, KEY, seed);
+        await collect(SCOPE, KEY);
+        const leases = trackWriteLeases();
+        disposables.add(record.bindWriteGuard(SCOPE, KEY, leases.guard));
+        const failure = diskFull();
+        const reported = deferred<unknown>();
+        const recovered = vi.fn();
+        disposables.add(record.onDidRecover(recovered));
+        const originalAppend = storage.append.bind(storage);
+        const originalSize = storage.size.bind(storage);
+        const originalSizeSync = storage.sizeSync.bind(storage);
+        let attempts = 0;
+        let unavailableLease: number | undefined;
+        let successfulSyncObservations = 0;
+        let redundantAsyncObservations = 0;
+        storage.size = async (...args) => {
+          if (leases.active.size > 0 && leases.leases.length === unavailableLease) {
+            redundantAsyncObservations++;
+            throw new StorageError(StorageErrors.codes.STORAGE_IO_FAILED, 'async end observation unavailable');
+          }
+          return originalSize(...args);
+        };
+        storage.sizeSync = (...args) => {
+          if (leases.active.size > 0 && leases.leases.length === unavailableLease) {
+            successfulSyncObservations++;
+          }
+          return originalSizeSync(...args);
+        };
+        storage.append = async (scope, key, data, options) => {
+          attempts++;
+          if (attempts === 1 || (phase === 'recovery append' && attempts === 2)) {
+            await originalAppend(scope, key, data.subarray(0, attempts === 1 ? 3 : 2), options);
+            if (phase === 'initial append' || attempts === 2) unavailableLease = leases.leases.length;
+            throw failure;
+          }
+          return originalAppend(scope, key, data, options);
+        };
+        record.append(SCOPE, KEY, { n: 1 }, { onError: reported.resolve });
+        record.append(SCOPE, KEY, { n: 2 });
+        expect(await reported.promise).toBe(failure);
+        if (phase === 'recovery append') await vi.advanceTimersByTimeAsync(1000);
+        await expect(record.flush()).rejects.toBe(failure);
+        expect(successfulSyncObservations).toBe(1);
+        expect(redundantAsyncObservations).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(phase === 'recovery append' ? 2000 : 1000);
+        await record.flush();
+
+        expect(await storage.read(SCOPE, KEY)).toEqual(new Uint8Array([...seed, ...batch]));
+        expect(await collect<Rec>(SCOPE, KEY)).toEqual([{ n: 0 }, { n: 1 }, { n: 2 }]);
+        expect(recovered).toHaveBeenCalledExactlyOnceWith({ scope: SCOPE, key: KEY });
+        expect(redundantAsyncObservations).toBe(0);
+        expect(attempts).toBe(phase === 'recovery append' ? 3 : 2);
+        expect(leases.active.size).toBe(0);
+      },
+    );
+
     it('does not confuse pre-existing identical content with a committed batch', async () => {
       const failure = diskFull();
       record.append<Rec>(SCOPE, KEY, { n: 1 });
@@ -3106,6 +3397,59 @@ describe('AppendLogStore session lock integration', () => {
       void _;
     }
   }
+
+  it('rejects an identical foreign batch committed under a new real session lock', async () => {
+    const bootstrap = {
+      homeDir,
+      clientIdentity: { productName: 'test', version: '0.0.0', platform: 'test' },
+    } as IBootstrapService;
+    const firstLocks = new SessionLockService(bootstrap, stubLog());
+    const nextLocks = new SessionLockService(bootstrap, stubLog());
+    const nextStorage = new FileStorageService(homeDir);
+    const firstLog = new AppendLogStore(storage, stubLog(), firstLocks);
+    const nextLog = new AppendLogStore(nextStorage, stubLog(), nextLocks);
+    const sessionId = 'example-session';
+    const bind = (target: AppendLogStore, locks: SessionLockService) => target.bindWriteGuard(SCOPE, KEY, () => {
+      const lease = locks.lease(sessionId);
+      return { dispose: () => { lease.release(); } };
+    });
+    const firstGuard = bind(firstLog, firstLocks);
+    const nextGuard = bind(nextLog, nextLocks);
+    const failure = new StorageError(StorageErrors.codes.STORAGE_DISK_FULL, 'injected zero-byte append failure');
+    const originalAppend = storage.append.bind(storage);
+    const appended = vi.spyOn(storage, 'append').mockRejectedValueOnce(failure).mockImplementation(originalAppend);
+    const recovered = vi.fn();
+    const subscription = firstLog.onDidRecover(recovered);
+    try {
+      await originalAppend(SCOPE, KEY, enc.encode('{"n":0}\n'));
+      for await (const value of firstLog.read(SCOPE, KEY)) void value;
+      firstLog.append(SCOPE, KEY, { n: 1 }, { onError: () => {} });
+      await expect(firstLog.flush()).rejects.toBe(failure);
+      expect(firstLocks.held(sessionId)).toBe(false);
+      nextLog.append(SCOPE, KEY, { n: 1 });
+      await nextLog.flush();
+      expect(nextLocks.held(sessionId)).toBe(false);
+      const foreign = await storage.read(SCOPE, KEY);
+      expect(new TextDecoder().decode(foreign)).toBe('{"n":0}\n{"n":1}\n');
+
+      await expect.soft(firstLog.close()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+
+      await expect.soft(firstLog.flush()).rejects.toMatchObject({ code: StorageErrors.codes.STORAGE_CORRUPTED });
+      expect.soft(recovered).not.toHaveBeenCalled();
+      expect.soft(appended).toHaveBeenCalledTimes(1);
+      expect.soft(await storage.read(SCOPE, KEY)).toEqual(foreign);
+      expect(firstLocks.held(sessionId)).toBe(false);
+    } finally {
+      await firstLog.dispose();
+      await nextLog.dispose();
+      firstGuard.dispose();
+      nextGuard.dispose();
+      subscription.dispose();
+      firstLocks.dispose();
+      nextLocks.dispose();
+      appended.mockRestore();
+    }
+  });
 
   it('tracks external modification via known length', async () => {
     expect(log.externallyModified(SCOPE, KEY)).toBe(false);

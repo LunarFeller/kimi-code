@@ -1,0 +1,32 @@
+packages/node-sdk/test/sdk-rpc-client-v2.test.ts
+  s_95e2f67b61a566::t_2246285bf79d70 566-614,616-632,634-661
+  s_95e2f67b61a566::t_192cc43dc923ca 615,633
+packages/acp-server/test/close.test.ts
+  s_95e2f67b61a566::t_27abe308061de1 165-251
+  s_95e2f67b61a566::t_07b738fffa1fff 162-164
+packages/acp-server/src/start.ts
+  s_95e2f67b61a566::t_6975551320d62b 196-210,212-213
+packages/kap-server/src/start.ts
+  s_95e2f67b61a566::t_966da16ae1a10d 351-369
+packages/kap-server/test/boot.test.ts
+  s_95e2f67b61a566::t_66baedc7cdb1c4 461-537
+packages/node-sdk/src/sdk-rpc-client-v2.ts
+  s_95e2f67b61a566::t_1661065d5c6ff7 544
+  s_95e2f67b61a566::t_00636d602bcd61 528-543,545-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.1",
+  "base_commit_sha": "4975fa917c2c4188270f45b10bc307301e582de9",
+  "prompts": {},
+  "sessions": {
+    "s_95e2f67b61a566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1534a-fe2d-7192-ad6f-a74d6ca88fb0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LunarFeller <justnowgone@gmail.com>"
+    }
+  }
+}

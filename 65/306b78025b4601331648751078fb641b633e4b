@@ -1,0 +1,34 @@
+packages/agent-core-v2/test/persistence/backends/node-fs/appendLogStore.test.ts
+  s_95e2f67b61a566::t_be2a2839bf6f8b 2325,2327-2328
+  s_95e2f67b61a566::t_dc667ef2d9dbf9 2304,2306-2307,2312,2317-2324,2343,3274-3335
+  s_95e2f67b61a566::t_74bded0cefe70a 11,18,3134-3273,3336-3339,3401-3452
+  s_95e2f67b61a566::t_733b9964c5032b 2289-2303,2305,2308-2311,2313-2316,2326,2329-2342,2344-2371
+  s_f0f981815e01b0::t_983e175bd9cb7f 3453
+packages/agent-core-v2/src/persistence/backends/node-fs/appendLogStore.ts
+  s_95e2f67b61a566::t_220fc747e316c6 705,707,714,889,891,908
+  s_95e2f67b61a566::t_ef74f39920be3f 67,657-663,712-713,715-723,733,883,907,909,911-914
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.1",
+  "base_commit_sha": "65306b78025b4601331648751078fb641b633e4b",
+  "prompts": {},
+  "sessions": {
+    "s_95e2f67b61a566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1534a-fe2d-7192-ad6f-a74d6ca88fb0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LunarFeller <justnowgone@gmail.com>"
+    },
+    "s_f0f981815e01b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ed3-f881-7702-b21b-3774e6b2eabb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LunarFeller <justnowgone@gmail.com>"
+    }
+  }
+}
